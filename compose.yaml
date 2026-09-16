@@ -1,0 +1,87 @@
+name: everyday-tools
+x-common: &common
+  image: everyday-tools:local
+  pull_policy: never
+  restart: unless-stopped
+  volumes:
+    - everyday-data:/data
+  read_only: true
+  tmpfs:
+    - /tmp:size=128m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "3"
+  environment: &environment
+    DATA_DIR: /data
+    MODELS_DIR: /data/models
+    FILE_RETENTION_MINUTES: ${FILE_RETENTION_MINUTES:-60}
+    MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-256}
+    MAX_STORAGE_USAGE: ${MAX_STORAGE_USAGE:-10240}
+    MIN_FREE_DISK_SPACE: ${MIN_FREE_DISK_SPACE:-1024}
+    LIGHT_CONCURRENCY: ${LIGHT_CONCURRENCY:-3}
+    MEDIUM_CONCURRENCY: ${MEDIUM_CONCURRENCY:-2}
+    HEAVY_CONCURRENCY: ${HEAVY_CONCURRENCY:-1}
+    JOB_TIMEOUT_SECONDS: ${JOB_TIMEOUT_SECONDS:-900}
+    MAX_OUTPUT_MB: ${MAX_OUTPUT_MB:-1024}
+    MAX_EXTRACT_MB: ${MAX_EXTRACT_MB:-512}
+    COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    FORWARDED_ALLOW_IPS: ${TRUSTED_PROXY_IPS:-127.0.0.1}
+    PROCESS_MEMORY_MB: ${PROCESS_MEMORY_MB:-2304}
+    PROCESS_THREADS: ${PROCESS_THREADS:-2}
+    PUBLIC_URL: ${PUBLIC_URL:-}
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_FROM: ${SMTP_FROM:-everyday-tools@localhost}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+services:
+  init:
+    <<: *common
+    build: .
+    pull_policy: build
+    user: "0:0"
+    cap_drop: []
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    restart: "no"
+    network_mode: none
+    command: ["python", "scripts/init_data.py"]
+  web:
+    <<: *common
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${PORT:-80}:8000"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    cpus: ${WEB_CPUS:-0.75}
+    mem_limit: ${WEB_MEMORY:-768m}
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+  worker:
+    <<: *common
+    command: ["python", "-m", "app.worker"]
+    network_mode: none
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    cpus: ${WORKER_CPUS:-2.0}
+    mem_limit: ${WORKER_MEMORY:-3g}
+    pids_limit: 160
+    stop_grace_period: 35s
+    healthcheck:
+      test: ["CMD", "python", "scripts/health_worker.py"]
+      interval: 20s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+volumes:
+  everyday-data:

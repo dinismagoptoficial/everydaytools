@@ -1,0 +1,37 @@
+{
+  "name": "everyday-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "prebuild": "node scripts/assets.mjs",
+    "predev": "node scripts/assets.mjs",
+    "build": "tsc -b && vite build",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@scure/bip39": "^2.0.1",
+    "@zxing/browser": "^0.1.5",
+    "diff": "^8.0.2",
+    "jsbarcode": "^3.12.3",
+    "lucide-react": "^0.577.0",
+    "pdfjs-dist": "^6.2.108",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.58.2",
+    "@types/diff": "^7.0.2",
+    "@types/jsbarcode": "^3.11.4",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  }
+}

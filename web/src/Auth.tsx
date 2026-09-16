@@ -1,0 +1,39 @@
+import { useState } from 'react';
+import { ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { api, type Status } from './api';
+import { useError, useText } from './i18n';
+
+export default function Auth({ status, onDone }: { status: Status; onDone: () => void }) {
+  const t = useText(), errorText = useError();
+  const token = location.hash.startsWith('#reset/') ? location.hash.slice(7) : '';
+  const [mode, setMode] = useState(status.setup ? 'setup' : token ? 'reset' : 'login');
+  const [step, setStep] = useState(1), [email, setEmail] = useState(''), [password, setPassword] = useState('');
+  const [name, setName] = useState('Everyday Tools'), [registration, setRegistration] = useState(true);
+  const [maxUpload, setMaxUpload] = useState(256), [retention, setRetention] = useState(60);
+  const [error, setError] = useState(''), [busy, setBusy] = useState(false), [sent, setSent] = useState(false);
+  async function submit(e: React.SubmitEvent) {
+    e.preventDefault(); setError('');
+    if (mode === 'setup' && step === 1) { if (password.length < 10) return setError('password_length'); setStep(2); return; }
+    setBusy(true);
+    try {
+      await api('/' + mode, 'POST', mode === 'setup' ? { email, password, installation_name: name, registration, max_upload_mb: maxUpload, retention_minutes: retention } : mode === 'reset' ? { token, password } : { email, password });
+      if (mode === 'recover') setSent(true);
+      else if (mode === 'reset') { location.hash = ''; setMode('login'); setPassword(''); }
+      else onDone();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return <div className="auth-wrap"><div className="auth-intro"><div className="brand large"><img src="/favicon.svg" alt="" /><span>Everyday Tools</span></div><p>Your digital Swiss Army knife.</p><div className="auth-illustration" aria-hidden="true"><span className="blade a"/><span className="blade b"/><span className="blade c"/><span className="knife-body"><i/><i/><i/></span></div><div className="auth-promise"><ShieldCheck size={22}/><div><strong>{t('Os teus ficheiros ficam por perto.', 'Your files stay close.')}</strong><p>{t('Ferramentas simples. Processamento local. Sem serviços externos.', 'Simple tools. Local processing. No external services.')}</p></div></div></div>
+    <div className="auth-form"><div className="eyebrow">{mode === 'setup' ? t(`CONFIGURAÇÃO INICIAL · ${step} / 2`, `INITIAL SETUP · ${step} / 2`) : t('A TUA INSTALAÇÃO', 'YOUR INSTALLATION')}</div>
+      <h1>{mode === 'setup' ? t('Bem-vindo ao Everyday Tools', 'Welcome to Everyday Tools') : mode === 'register' ? t('Criar conta', 'Create account') : mode === 'recover' ? t('Recuperar palavra-passe', 'Recover password') : mode === 'reset' ? t('Nova palavra-passe', 'New password') : t('Bom ter-te de volta.', 'Welcome back.')}</h1>
+      <p className="muted">{mode === 'setup' ? t('Vamos preparar o teu espaço de ferramentas.', 'Let’s get your tools ready.') : t('Entra para aceder às tuas ferramentas e ficheiros.', 'Sign in to access your tools and files.')}</p>
+      <form onSubmit={submit}>
+        {!(mode === 'setup' && step === 2) && <>{mode !== 'reset' && <label>E-mail<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)}/></label>}{mode !== 'recover' && <label>{t('Palavra-passe', 'Password')}<input type="password" required minLength={mode === 'login' ? 1 : 10} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)}/>{mode !== 'login' && <small>{t('Pelo menos 10 caracteres.', 'At least 10 characters.')}</small>}</label>}</>}
+        {mode === 'setup' && step === 2 && <><label>{t('Nome da instalação', 'Installation name')}<input value={name} required maxLength={60} onChange={e => setName(e.target.value)}/></label><div className="form-grid"><label>{t('Limite de upload (MB)', 'Upload limit (MB)')}<input type="number" min={1} max={10240} value={maxUpload} onChange={e => setMaxUpload(+e.target.value)}/></label><label>{t('Retenção (minutos)', 'Retention (minutes)')}<input type="number" min={5} max={1440} value={retention} onChange={e => setRetention(+e.target.value)}/></label></div><label className="check"><input type="checkbox" checked={registration} onChange={e => setRegistration(e.target.checked)}/>{t('Permitir que outras pessoas criem conta', 'Allow others to create an account')}</label><p className="notice">{t('Esta conta será o administrador. Os ficheiros serão eliminados automaticamente após o período definido, contado desde o upload.', 'This account will be the administrator. Files will be deleted automatically after the retention period, starting at upload.')}</p></>}
+        {error && <p className="error" role="alert">{errorText(error)}</p>}{sent && <p className="success" role="status">{t('Se existir uma conta, receberás uma ligação por e-mail.', 'If an account exists, you will receive an email link.')}</p>}
+        <button className="primary wide" disabled={busy}>{busy ? t('A aguardar…', 'Please wait…') : mode === 'setup' ? step === 1 ? t('Continuar', 'Continue') : t('Começar a utilizar', 'Start using Everyday Tools') : mode === 'register' ? t('Criar conta', 'Create account') : mode === 'recover' ? t('Enviar ligação', 'Send link') : mode === 'reset' ? t('Guardar palavra-passe', 'Save password') : t('Entrar', 'Sign in')}<ArrowRight size={17}/></button>
+      </form>
+      {mode === 'login' && <div className="auth-links">{status.registration && <button className="link" onClick={() => { setMode('register'); setError(''); }}>{t('Criar uma conta', 'Create an account')}</button>}{status.smtp && <button className="link" onClick={() => setMode('recover')}>{t('Esqueceste-te da palavra-passe?', 'Forgot your password?')}</button>}</div>}
+      {mode !== 'login' && mode !== 'setup' && <button className="link back" onClick={() => { setMode('login'); setError(''); }}><ArrowLeft size={16}/>{t('Voltar ao início de sessão', 'Back to sign in')}</button>}
+      {mode === 'setup' && step === 2 && <button className="link back" onClick={() => setStep(1)}><ArrowLeft size={16}/>{t('Voltar', 'Back')}</button>}
+    </div></div>;
+}
