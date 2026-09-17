@@ -5,13 +5,17 @@ import subprocess
 import time
 import wave
 import zipfile
+from urllib.parse import urlparse
 
 import httpx
+import pypdfium2 as pdfium
 from PIL import Image, ImageDraw
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from pypdf import PdfReader
 
 base = os.getenv('TEST_URL', 'http://127.0.0.1:8087')
+assert urlparse(base).hostname in {'127.0.0.1', 'localhost'} and urlparse(base).port == 8087, 'Use the disposable test installation on port 8087.'
 client = httpx.Client(base_url=base, headers={'X-Requested-With': 'EverydayTools'}, timeout=60)
 response = client.post('/api/login', json={'email': 'family@example.test', 'password': 'test-only-password-123'})
 response.raise_for_status()
@@ -21,7 +25,16 @@ prefs.update(upload_limit=100, job_limit=100)
 client.put('/api/admin/settings', json=prefs).raise_for_status()
 
 
+def clear_abuse_counters():
+    """This sweep makes more requests than any real person, so the counters are reset."""
+    subprocess.run(['docker', 'exec', 'everyday-tools-test-web-1', 'python', '-c',
+                    "import sqlite3;db=sqlite3.connect('/data/database/everyday.sqlite3');"
+                    "db.execute('DELETE FROM rate_limits');db.commit()"], check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def run(name, content, operation, options=None):
+    clear_abuse_counters()
     response = client.post('/api/jobs', json={'files': [{'name': name, 'size': len(content)}]})
     response.raise_for_status()
     jid = response.json()['id']
@@ -68,6 +81,20 @@ for operation, options in [('pdf_merge', {}), ('pdf_split', {}), ('pdf_pages', {
     run('document.pdf', pdf, operation, options)
 protected = run('document.pdf', pdf, 'pdf_protect', {'new_password': 'secret-123'})[0][1]
 run('protected.pdf', protected, 'pdf_unlock', {'password': 'secret-123'})
+run('protected.pdf', protected, 'pdf_compress', {'password': 'secret-123'})
+run('protected.pdf', protected, 'pdf_ocr', {'password': 'secret-123'})
+scanned = io.BytesIO()
+with pdfium.PdfDocument(pdf) as document:
+    page = document[0]
+    bitmap = page.render(scale=2)
+    c = canvas.Canvas(scanned, pagesize=page.get_size())
+    c.drawImage(ImageReader(bitmap.to_pil()), 0, 0, *page.get_size())
+    c.showPage()
+    c.save()
+    bitmap.close()
+    page.close()
+ocr = run('scanned.pdf', scanned.getvalue(), 'pdf_ocr')[0][1]
+assert 'Everyday' in PdfReader(io.BytesIO(ocr)).pages[0].extract_text()
 for operation, options in [('image_convert', {'format': 'jpg'}), ('image_resize', {'width': 100, 'height': 100}),
                            ('image_compress', {'quality': 60}), ('image_metadata', {}), ('image_background', {}), ('images_pdf', {})]:
     result = run('photo.png', png, operation, options)
@@ -84,7 +111,18 @@ with zipfile.ZipFile(docx, 'w') as z:
     z.writestr('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
     z.writestr('word/document.xml', '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Everyday Tools Office test</w:t></w:r></w:p></w:body></w:document>')
 run('document.docx', docx.getvalue(), 'office_pdf')
-run('sheet.csv', b'Name,Value\nEveryday Tools,42\n', 'sheet_convert', {'format': 'xlsx'})
+sheet = run('sheet.csv', b'Name,Value\nEveryday Tools,42\n', 'sheet_convert', {'format': 'xlsx'})[0][1]
+run('sheet.xlsx', sheet, 'office_pdf')
+run('sheet.xlsx', sheet, 'sheet_convert', {'format': 'ods'})
+csv = run('sheet.xlsx', sheet, 'sheet_convert', {'format': 'csv'})[0][1]
+assert b'Everyday Tools' in csv and b'42' in csv
+for fmt in ['png', 'webp', 'avif']:
+    converted = run('photo.png', png, 'image_convert', {'format': fmt})[0][1]
+    with Image.open(io.BytesIO(converted)) as out:
+        assert out.size == (320, 240)
+svg = run('drawing.svg', b'<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120"><rect width="240" height="120" fill="red"/></svg>', 'image_convert', {'format': 'png'})[0][1]
+with Image.open(io.BytesIO(svg)) as out:
+    assert out.width == 2 * out.height
 
 wav = io.BytesIO()
 with wave.open(wav, 'wb') as audio:
@@ -94,9 +132,13 @@ with wave.open(wav, 'wb') as audio:
     audio.writeframes(b'\0\0' * 8000)
 run('audio.wav', wav.getvalue(), 'audio_convert', {'format': 'mp3'})
 run('audio.wav', wav.getvalue(), 'audio_normalize', {'format': 'wav'})
+for fmt in ['flac', 'aac', 'm4a', 'ogg']:
+    run('audio.wav', wav.getvalue(), 'audio_convert', {'format': fmt})
 video = subprocess.run(['docker', 'exec', 'everyday-tools-test-worker-1', 'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=320x240:d=1', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:v', 'libx264', '-threads', '1', '-c:a', 'aac', '-movflags', 'frag_keyframe+empty_moov', '-f', 'mp4', 'pipe:1'], capture_output=True, check=True).stdout
 for operation, options in [('video_convert', {}), ('video_compress', {'preset': 'small'}), ('video_gif', {}), ('video_mute', {}), ('audio_extract', {})]:
     run('clip.mp4', video, operation, options)
+run('clip.mp4', video, 'video_convert', {'format': 'webm', 'codec': 'vp9'})
+run('clip.mp4', video, 'video_convert', {'format': 'mkv', 'codec': 'h265'})
 for fmt in ['zip', 'tar', 'gz', '7z']:
     result = run('document.pdf', pdf, 'archive_create', {'format': fmt})
     run('archive.' + fmt, result[0][1], 'archive_extract')
@@ -110,5 +152,5 @@ c.save()
 result = run('form.pdf', buf.getvalue(), 'pdf_forms', {'fields': {'name': 'Everyday'}})
 filled = PdfReader(io.BytesIO(result[0][1]))
 assert filled.get_fields()['name']['/V'] == 'Everyday'
-assert bool(filled.trailer['/Root']['/AcroForm'].get('/NeedAppearances')), 'viewers must render the filled values'
+assert b'Everyday' in filled.pages[0]['/Annots'][0].get_object()['/AP']['/N'].get_data()
 print('All Docker converter smoke tests passed.', flush=True)

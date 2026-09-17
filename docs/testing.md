@@ -50,7 +50,7 @@ O `-p everyday-tools-test` é obrigatório. Sem ele, os comandos atuam sobre a i
 
 ### O que cada nível verifica
 
-`web/e2e/app.spec.ts` percorre configuração inicial, mudança de idioma, ferramentas locais do browser, upload, escolha de operação, conversão, download, eliminação imediata e o comportamento em ecrã de telemóvel. Falha se a página fizer qualquer pedido a um endereço externo ou produzir um erro de JavaScript — é esta a verificação automática de que a aplicação funciona sem Internet.
+`web/e2e/app.spec.ts` percorre configuração inicial, mudança de idioma, ferramentas locais do browser, upload, escolha de operação, conversão, download, eliminação imediata e o comportamento em ecrã de telemóvel. Falha se a página fizer qualquer pedido a um endereço externo ou produzir um erro de JavaScript. É esta a verificação automática de que a aplicação funciona sem Internet.
 
 `tests/docker_smoke.py` executa cada conversor real dentro do container: todas as operações de PDF, o editor com ocultação permanente, proteger/desbloquear, Office e folhas de cálculo, imagens, remoção de fundo com o modelo local, vídeo, áudio, arquivos e preenchimento de formulários. Cada tarefa é descarregada, comparada com o tamanho anunciado e eliminada no fim.
 

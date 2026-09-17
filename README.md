@@ -2,115 +2,106 @@
 
 **Your digital Swiss Army knife.**
 
-Ferramentas privadas para PDFs, documentos, imagens, vídeo, áudio e pequenas tarefas do dia a dia. Uma aplicação para instalar em casa e utilizar na rede local, em português de Portugal ou inglês.
+PDFs, documentos, imagens, vídeo, áudio e ferramentas do dia a dia numa aplicação que podes alojar no teu servidor. Interface em português de Portugal e inglês, contas individuais e processamento sem serviços de conversão externos.
 
-## Instalar com Docker
+Criado por [Dinis Mago](https://github.com/dinismagoptoficial). Código aberto sob a [licença MIT](LICENSE).
 
-Requisitos recomendados: Linux com Landlock (Ubuntu 22.04+, Debian 12+, Linux Mint 21+ ou LMDE 6+), Docker Compose v2, 4 GB de RAM e 10 GB de disco livres. Docker Desktop com um kernel Linux compatível também funciona. O limite do serviço de processamento é de 2 CPUs e 3 GB de RAM; ajustável em `.env`.
+[English](README.en.md) · [Operação e restauro](docs/operations.md) · [Segurança](SECURITY.md) · [Contribuir](CONTRIBUTING.md)
+
+## Instalação
+
+Precisas de Docker Compose v2 e de um kernel Linux com Landlock. Recomendamos 4 GB de RAM e 10 GB de disco livre. Ubuntu 22.04+, Debian 12+, Linux Mint 21+ e LMDE 6+ são as bases previstas; Docker Desktop também funciona com um kernel compatível.
+
+Na pasta do projeto:
 
 ```bash
 cp .env.example .env
-docker compose up -d
+docker compose up -d --build --wait
 ```
 
-O primeiro arranque constrói a imagem e instala as dependências e o modelo de remoção de fundo. Precisa de Internet nesta etapa. Depois, o processamento funciona offline. A construção inicial pode demorar vários minutos.
+Abre `http://IP-DO-SERVIDOR`. A primeira visita cria o administrador, define os limites e apresenta os termos, a política de privacidade e as responsabilidades de quem gere a instalação. Não existem credenciais predefinidas. Conclui esta etapa antes de dar acesso a outras pessoas.
 
-Abre **http://IP-DO-SERVIDOR**. A primeira visita permite criar o administrador, dar um nome à instalação e escolher limites. Por defeito, os ficheiros expiram **60 minutos após a criação da tarefa**. O primeiro administrador não tem credenciais predefinidas.
+O primeiro arranque descarrega dependências e o modelo de remoção de fundo. Depois da instalação, as conversões funcionam sem Internet. Para mudar a porta, define `PORT=8080` em `.env`.
 
-Para outra porta, define `PORT=8080` em `.env` antes de iniciar. Não exponhas a instalação à Internet antes de concluir o setup.
-
-## Ubuntu, Debian e Linux Mint
-
-Na pasta deste projeto:
+Em Ubuntu, Debian e Linux Mint podes usar o instalador:
 
 ```bash
 sudo bash install.sh
 ```
 
-Suporta Ubuntu, Debian, **Linux Mint**, LMDE e outras distribuições da mesma família, como Pop!_OS ou Zorin. O sistema é identificado por `/etc/os-release`: uma distribuição não é recusada por se chamar `linuxmint` em vez de `ubuntu`. Como a Docker só publica repositórios para Ubuntu e Debian, o instalador usa a versão base indicada pelo próprio sistema — Linux Mint 22 instala a partir de `ubuntu noble`, Mint 21 de `ubuntu jammy` e LMDE 6 de `debian bookworm`.
+Prepara Docker, Compose e Avahi, instala em `/opt/everyday-tools` e mostra o endereço IP e `everyday-tools.local`. O nome `.local` depende do suporte mDNS da rede. Repetir a instalação preserva contas, definições e dados existentes. Os conversores ficam nos containers.
 
-O instalador prepara Docker, Compose e Avahi, adiciona a tua conta ao grupo `docker`, instala em `/opt/everyday-tools`, inicia os serviços, verifica a saúde da aplicação e mostra os endereços `.local` e IP. Executá-lo novamente preserva contas, definições, volumes e ficheiros em processamento. O nome `everyday-tools.local` depende do suporte mDNS da rede e do dispositivo. O IP continua disponível.
+## O que inclui
 
-FFmpeg, LibreOffice, OCR e o modelo de remoção de fundo ficam dentro dos containers. No sistema anfitrião só são instalados Docker, Compose e Avahi.
-
-O projeto ainda não tem um URL público de distribuição definido. Para futura instalação por `curl`, publica o repositório e define `EVERYDAY_TOOLS_REPOSITORY`; o script não aponta para um endereço fictício. Reserva o endereço IP do servidor no router para manter o anúncio mDNS estável.
-
-## Ferramentas
-
-| Área | Operações |
+| Área | Ferramentas |
 | --- | --- |
-| PDF | Juntar, dividir, ordenar/extrair/eliminar páginas, rodar, comprimir, imagens ↔ PDF, marca de água, números, proteger/desbloquear, OCR português/inglês, extrair texto/imagens, formulários de texto, PDF/A e reparação |
-| Editor PDF | Adicionar texto, imagem, assinatura visual, desenho, realce, sublinhado, retângulo e ocultação permanente; ordenar, rodar e eliminar páginas |
-| Documentos | Word, Excel, PowerPoint e OpenDocument para PDF; CSV/XLSX/ODS |
-| Imagens | JPG, PNG, HEIC/HEIF, WebP, AVIF, SVG e outros formatos de entrada; conversão para JPG/PNG/WebP/AVIF, compressão, dimensões, remoção de EXIF e fundo. Comprimir e remover metadados mantêm o formato original por predefinição |
-| Vídeo | MP4/MOV/MKV/WebM/AVI, GIF como entrada; MP4/MKV/WebM como saída, compressão, resolução/FPS/bitrate/codec, GIF, extrair/remover áudio |
-| Áudio | MP3, WAV, FLAC, AAC, M4A e OGG; conversão, bitrate e normalização |
-| Arquivos | Criar e extrair ZIP, TAR, GZIP e 7z, com limites e validação de caminhos |
-| Dia a dia | Criar/ler QR e códigos de barras, palavras-passe/frases-passe, contar/transformar/comparar texto, remover linhas repetidas, unidades, percentagens, idade e timestamps |
+| PDF | Juntar, dividir, ordenar, rodar, comprimir, proteger, desbloquear, OCR em português e inglês, extrair texto e imagens, preencher formulários, PDF/A e reparação |
+| Editor PDF | Texto, imagens, assinatura visual, desenho, realce, sublinhado, numeração, marca de água e ocultação permanente |
+| Documentos | Word, Excel, PowerPoint e OpenDocument para PDF; conversão entre CSV, XLSX e ODS |
+| Imagens | Conversão, compressão, dimensões, remoção de metadados e remoção de fundo com modelo local |
+| Vídeo e áudio | Conversão, compressão, resolução, codecs, GIF, extração de áudio, vídeo sem som e normalização de volume |
+| Arquivos | Criar e extrair ZIP, TAR, GZIP e 7z |
+| Dia a dia | QR e códigos de barras, palavras-passe, frases-passe, texto, comparação, unidades, percentagens, idade e timestamps |
 
-Operações compatíveis são apresentadas após o upload. Vários ficheiros podem ser processados em conjunto quando a operação o permite. Resultados múltiplos incluem downloads individuais e um ZIP temporário.
+As ferramentas compatíveis aparecem depois de escolheres os ficheiros. Operações em lote podem produzir resultados individuais e um ZIP para descarregar tudo.
 
-O editor adiciona conteúdo; não altera semanticamente texto existente. A assinatura é visual, sem certificado digital. Páginas com ocultações permanentes são reconstruídas a partir de píxeis: perdem texto selecionável e o conteúdo original dessa página não é incluído no resultado. Revê sempre documentos editados antes de os partilhar.
+O editor acrescenta conteúdo; não reescreve o texto original. A assinatura é visual, sem certificado digital. As páginas com ocultações permanentes são reconstruídas como imagem. A fidelidade de Office, o OCR e os contornos da remoção de fundo dependem dos ficheiros. PDF/A é produzido pelo OCRmyPDF, sem validação independente com veraPDF. Os formulários suportam campos de texto e lista, sem XFA. GZIP aceita um ficheiro por operação.
 
-A fidelidade de Office, a reparação de PDFs e os contornos da remoção de fundo dependem do documento. PDF/A é produzido pelo OCRmyPDF; esta versão não inclui validação independente com veraPDF. SVG é aceite como entrada estática com referências externas bloqueadas, não como formato vetorial de saída. Formulários suportam campos de texto/lista; XFA e assinaturas digitais não estão implementados. GZIP aceita um ficheiro de cada vez. A extração de arquivos apresenta os ficheiros com nomes únicos, sem reconstruir diretórios arbitrários.
+## Servidores com menos recursos
 
-## Dados e privacidade
+O perfil de memória reduzida limita o processamento a uma tarefa de cada vez, um thread e 1,5 GB de RAM para o worker. A interface tem um limite de 512 MB. Reserva também memória para o sistema operativo; ficheiros grandes podem ultrapassar estes limites.
 
-Um volume Docker contém:
-
-```text
-/data/database   SQLite: contas, sessões, definições e tarefas temporárias
-/data/jobs       Um diretório isolado por tarefa
-/data/temp       Coordenação entre processos, sem documentos
-/data/models     Modelo local de remoção de fundo
+```bash
+docker compose -f compose.yaml -f compose.low-memory.yaml up -d --build --wait
 ```
 
-Os prazos são persistidos em SQLite. A aplicação e o serviço de processamento eliminam tarefas expiradas ao arrancar e verificam novamente a cada 30 segundos. O acesso a um ficheiro expirado é recusado imediatamente, mesmo antes dessa verificação. «Eliminar agora» interrompe o processamento associado e elimina o diretório e o registo da tarefa. Temporários de processamento são removidos também após falha ou timeout.
+Mantém os dois ficheiros nos comandos seguintes, incluindo atualizações:
 
-São eliminadas todas as cópias controladas pela aplicação. Isto não é uma garantia de apagamento físico forense em SSDs, snapshots ou backups externos. Não incluas o volume de tarefas em backups do host. Logs não contêm nomes de documentos, texto extraído, passwords ou tokens; rodam automaticamente.
+```bash
+COMPOSE_FILE=compose.yaml:compose.low-memory.yaml bash update.sh
+```
 
-Não há fontes remotas, CDN, telemetria ou APIs de conversão. O serviço de processamento não tem rede no Compose. O modelo U²-Net small é incluído na instalação e verificado por SHA-256. As ferramentas leves de texto/códigos/calculadoras correm no browser.
+No perfil normal, a fila permite até 3 tarefas leves, 2 médias e 1 pesada, com um limite global e um orçamento calculado a partir da memória do container. Estas estimativas controlam a admissão na fila; os limites Docker continuam a limitar a memória real. CPU, threads e memória são ajustáveis em `.env`.
 
-## Recursos e fila
+## Contas, ficheiros e privacidade
 
-Por defeito: **3 LIGHT, 2 MEDIUM e 1 HEAVY**. A atribuição é atómica em SQLite e alterna entre utilizadores com base na última vez que foram servidos. Cancelar uma tarefa só liberta a vaga depois de o processo terminar. Existe um único supervisor por instalação; não escales o serviço `worker` com réplicas.
+Cada conta acede aos seus ficheiros. Em **A minha conta** podes editar nome, e-mail, idioma e palavra-passe. Alterar o e-mail exige a palavra-passe atual e termina as outras sessões.
 
-Cada pessoa pode ter 5 tarefas pendentes/em processamento. Login: 5 tentativas/minuto por IP e conta. Upload: 20/10 minutos por conta. Registo, criação de tarefas, recuperação e ações administrativas também têm limites.
+Os ficheiros expiram, por defeito, 60 minutos após a criação da tarefa. O prazo não é prolongado por downloads ou novas tentativas. A eliminação interrompe o processamento e remove originais, resultados e temporários. Se o processo ainda estiver a terminar, o acesso é revogado e a limpeza volta a tentar.
 
-Antes de aceitar ficheiros, a aplicação reserva espaço para originais e resultados. Reserva por tarefa: tamanho de entrada + `min(MAX_OUTPUT_MB, max(4 × entrada, 128 MB))`. O total reservado é limitado pelo armazenamento configurado e espaço livre mínimo. Quando uma tarefa termina com sucesso, a parte não utilizada da reserva é libertada imediatamente; tarefas falhadas mantêm o orçamento para permitir nova tentativa. Conversões que excedam o orçamento, tempo ou memória falham sem deixar o processo em execução. Grandes PDFs/imagens também têm limites de páginas/píxeis.
+O volume Docker guarda contas, definições, tarefas temporárias e o modelo. Não há telemetria, fontes remotas ou publicidade. O worker não tem acesso à rede. As ferramentas de texto e calculadoras correm no browser. SMTP é opcional e serve apenas para recuperar acesso à conta.
 
-Os limites iniciais em `.env` são importados apenas na primeira criação da base de dados. Depois, edita retenção, uploads, filas, registos e quotas em **Administração → Definições**. Recursos dos containers, timeout e SMTP continuam em `.env`.
+O administrador define o acesso, a retenção, os backups e os contactos de privacidade da sua instalação. A interface não lhe permite descarregar documentos de outras contas, mas quem controla o servidor tem acesso técnico ao armazenamento. A aplicação não controla snapshots, backups externos ou cópias já descarregadas. Consulta [privacidade e condições](docs/legal.md).
 
-## Atualizar e fazer backup
+## Manutenção
 
 ```bash
 bash backup.sh
 bash update.sh
+docker compose ps
 ```
 
-O backup contém apenas contas e configuração, **sem tarefas, sessões, ficheiros ou páginas livres da base de dados original**. Contém hashes de palavras-passe e, se configuradas, credenciais SMTP em `.env`; guarda-o em local privado. O exportador lê uma transação consistente e cria uma nova base de dados com as tabelas vazias de dados temporários.
+O backup inclui contas, preferências e configuração. Exclui documentos, tarefas e sessões. A atualização cria um backup, preserva a imagem anterior, reconstrói a aplicação e verifica os serviços. As instruções de HTTPS, SMTP e restauro estão em [docs/operations.md](docs/operations.md).
 
-A atualização cria backup, preserva a imagem anterior, obtém alterações Git com `--ff-only` quando existe origem, constrói a nova imagem, reinicia, aplica migrações e verifica os serviços. Sem origem Git, reconstrói o código presente na pasta. As instruções de restauro estão em [docs/operations.md](docs/operations.md).
+Limites editáveis são definidos inicialmente em `.env`. Depois do setup, muda retenção, quotas, registos e concorrência em **Administração**. Os recursos dos containers e SMTP continuam em `.env`.
 
-## Desenvolvimento e testes
+## Desenvolvimento
+
+React e TypeScript na interface, FastAPI e SQLite no servidor, com um supervisor separado para os conversores. Não precisa de Redis.
 
 ```bash
 python -m venv .venv
-# Ativar .venv de acordo com o sistema
+# Ativa o ambiente virtual antes dos comandos seguintes.
 pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q
+python -m ruff check app tests scripts
 cd web
 npm ci
 npm run build
 ```
 
-Para desenvolvimento, `python -m uvicorn app.main:app --reload --no-access-log` e `npm run dev` servem a API e a interface. O processamento deve usar Linux/Docker. Uma opção explícita `ALLOW_UNSANDBOXED_DEV=true` permite o supervisor nativo em Windows para fixtures de confiança, sem isolamento de filesystem; não é apropriada para utilização normal.
+Os testes de instalação e isolamento requerem Linux. Os testes de browser e conversão usam o projeto Docker descartável `everyday-tools-test`, na porta 8087. Instruções em [docs/testing.md](docs/testing.md).
 
-Testes reais de browser e conversores usam uma instalação Docker **descartável** na porta 8087, projeto `everyday-tools-test`, criada por `bash scripts/test-stack.sh up`. Ver [docs/testing.md](docs/testing.md). Os testes não criam contas na instalação de utilização final.
+As dependências mantêm as suas licenças, descritas em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). As condições de redistribuição dos conversores também se aplicam às imagens Docker.
 
-Arquitetura: React/TypeScript/Vite, FastAPI, SQLite WAL, filesystem e um supervisor de processos. Sem Redis nem serviços cloud. Consulta [docs/security.md](docs/security.md) e [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-
-© Dinis Mago 2026
-
-Projeto desenvolvido em parceria com a Lusyn Software.
+© 2026 Dinis Mago e contribuidores. Projeto desenvolvido em parceria com a Lusyn Software.

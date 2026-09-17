@@ -29,8 +29,9 @@ def isolate(folder: Path, models: Path):
     if fd < 0:
         raise RuntimeError("Sandbox initialization failed")
     readonly = (1 << 0) | (1 << 2) | (1 << 3)
-    allowed = [(Path(p), readonly) for p in ("/usr", "/lib", "/lib64", "/app", "/etc/fonts", "/etc/libreoffice", "/etc/ssl", "/etc/ld.so.cache", "/etc/localtime", "/etc/passwd", "/etc/group", "/proc/cpuinfo", "/proc/meminfo", "/sys/devices/system/cpu")]
-    allowed += [(models, readonly), (folder, mask), (Path("/dev/null"), (1 << 1) | (1 << 2)), (Path("/dev/urandom"), 1 << 2), (Path("/dev/random"), 1 << 2)]
+    allowed = [(Path(p), readonly) for p in ("/usr", "/lib", "/lib64", "/app", "/etc/fonts", "/etc/libreoffice", "/var/lib/libreoffice", "/etc/ssl", "/etc/ld.so.cache", "/etc/localtime", "/etc/passwd", "/etc/group", "/proc/cpuinfo", "/proc/meminfo", "/sys/devices/system/cpu")]
+    # LibreOffice creates and removes its IPC socket in /tmp even with TMPDIR set.
+    allowed += [(Path("/tmp"), (1 << 9) | (1 << 5)), (Path("/var/cache/fontconfig"), readonly), (models, readonly), (folder, mask), (Path("/dev/null"), (1 << 1) | (1 << 2)), (Path("/dev/urandom"), 1 << 2), (Path("/dev/random"), 1 << 2)]
     try:
         for path, access in allowed:
             if not path.exists():

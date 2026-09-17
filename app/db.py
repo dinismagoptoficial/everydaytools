@@ -27,7 +27,8 @@ def connect(write=False):
 def initialize():
     for folder in (config.DB.parent, config.JOBS, config.TEMP, config.MODELS):
         folder.mkdir(parents=True, exist_ok=True)
-    with connect() as db:
+    from filelock import FileLock
+    with FileLock(str(config.TEMP / "migrations.lock"), timeout=60), connect() as db:
         db.execute("PRAGMA journal_mode=WAL")
         version = db.execute("PRAGMA user_version").fetchone()[0]
         if version < 1:
@@ -69,6 +70,13 @@ def initialize():
         if db.execute("PRAGMA user_version").fetchone()[0] < 2:
             db.execute("ALTER TABLE jobs ADD COLUMN running INTEGER NOT NULL DEFAULT 0")
             db.execute("PRAGMA user_version=2")
+        if db.execute("PRAGMA user_version").fetchone()[0] < 3:
+            db.execute("""CREATE TABLE user_preferences (
+                user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT 'pt-PT'
+            )""")
+            db.execute("CREATE INDEX jobs_owner ON jobs(user_id, expires)")
+            db.execute("PRAGMA user_version=3")
 
 
 def settings(db=None):

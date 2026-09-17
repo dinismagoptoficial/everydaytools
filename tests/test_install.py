@@ -5,6 +5,7 @@ platform detection, the Landlock gate and the project copy can be exercised
 without root, apt or a real distribution.
 """
 import shutil
+import sys
 import subprocess
 import textwrap
 from pathlib import Path
@@ -14,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 INSTALLER = ROOT / "install.sh"
 BASH = shutil.which("bash")
-pytestmark = pytest.mark.skipif(BASH is None, reason="bash is required for installer tests")
+pytestmark = pytest.mark.skipif(BASH is None or sys.platform != 'linux', reason="Installer checks require Linux and bash; run tests/Dockerfile on other hosts")
 
 # Real /etc/os-release contents from each supported system.
 RELEASES = {

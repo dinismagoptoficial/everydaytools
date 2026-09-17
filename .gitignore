@@ -13,3 +13,4 @@ test-results/
 *.log
 web/public/pdf/
 web/tsconfig.tsbuildinfo
+web/public/third-party-licenses.txt

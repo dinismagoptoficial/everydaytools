@@ -32,7 +32,8 @@ def client():
 
 
 def authenticate(client, email="admin@example.test", setup=True):
-    response = client.post("/api/setup" if setup else "/api/register", json={"email": email, "password": "good-test-password"})
+    from app.legal import VERSION
+    response = client.post("/api/setup" if setup else "/api/register", json={"email": email, "password": "good-test-password", "legal_version": VERSION})
     assert response.status_code == 200, response.text
     user = client.get("/api/me").json()
     client.headers["X-CSRF-Token"] = user["csrf"]

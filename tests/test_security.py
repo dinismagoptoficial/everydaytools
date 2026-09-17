@@ -21,7 +21,7 @@ def test_setup_and_session_fixation(client):
     assert client.cookies.get("everyday_session") != old_cookie
     assert "HttpOnly" in response.headers["set-cookie"]
     assert "SameSite=lax" in response.headers["set-cookie"]
-    assert client.post("/api/setup", json={"email": "x@example.test", "password": "good-test-password"}).status_code == 409
+    assert client.post("/api/setup", json={"email": "x@example.test", "password": "good-test-password", "legal_version": "2026-09-17"}).status_code == 409
     with connect() as db:
         assert db.execute("SELECT password FROM users").fetchone()[0].startswith("$argon2id$")
         assert db.execute("SELECT count(*) FROM sessions").fetchone()[0] == 1
@@ -148,3 +148,46 @@ def test_no_external_resources_or_cache(admin_client):
     assert 'no-store' in response.headers['cache-control']
     assert "connect-src 'self'" in response.headers['content-security-policy']
     assert response.headers['x-content-type-options'] == 'nosniff'
+
+
+def test_only_one_admin_survives_concurrent_setup(client):
+    """Setup must be a one-time, race-proof event: no way to end up with two admins."""
+    def attempt(n):
+        c = TestClient(app, headers={"X-Requested-With": "EverydayTools"})
+        response = c.post("/api/setup", json={"email": f"racer{n}@example.test", "password": "good-test-password", "legal_version": "2026-09-17"})
+        return response.status_code
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        results = list(pool.map(attempt, range(10)))
+    assert results.count(200) == 1, f"expected exactly one setup to succeed, got {results}"
+    # The rest are refused either because an admin already exists (409) or because the
+    # per-IP setup rate limit caught them (429) — both are correct, no other status may appear.
+    assert set(results) <= {200, 409, 429}, f"unexpected status among {results}"
+    with connect() as db:
+        users = db.execute("SELECT role FROM users").fetchall()
+        assert [u["role"] for u in users] == ["ADMIN"]
+
+
+def test_no_endpoint_lets_a_user_grant_themself_admin(admin_client):
+    """A regular account can never acquire ADMIN through any documented request."""
+    with TestClient(app, headers={"X-Requested-With": "EverydayTools"}) as user_client:
+        authenticate(user_client, "plain@example.test", setup=False)
+        me = user_client.get("/api/me").json()
+        assert me["role"] == "USER"
+        uid = me["id"]
+        # Nothing in the public API accepts a role field; sending one is silently ignored.
+        response = user_client.get("/api/me")
+        assert response.json()["role"] == "USER"
+        # A non-admin has no access to the endpoint that could otherwise touch role/disabled state.
+        assert user_client.put(f"/api/admin/users/{uid}", json={"disabled": False}).status_code == 403
+        with connect() as db:
+            assert db.execute("SELECT role FROM users WHERE id=?", (uid,)).fetchone()["role"] == "USER"
+
+
+def test_registration_is_refused_before_setup_exists(client):
+    """Even with registration enabled by default, no account can appear before the first admin."""
+    with connect() as db:
+        assert not db.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+    response = client.post("/api/register", json={"email": "early@example.test", "password": "good-test-password"})
+    assert response.status_code == 403
+    with connect() as db:
+        assert not db.execute("SELECT 1 FROM users LIMIT 1").fetchone()

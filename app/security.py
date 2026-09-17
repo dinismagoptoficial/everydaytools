@@ -2,7 +2,7 @@ import hashlib
 import re
 import secrets
 import time
-import unicodedata
+from threading import BoundedSemaphore
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
@@ -10,9 +10,11 @@ from fastapi import HTTPException, Request
 
 from . import config
 from .db import connect, settings
+from .filenames import safe_name as safe_name
 
 hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 DUMMY_HASH = hasher.hash(secrets.token_urlsafe(32))
+password_slots = BoundedSemaphore(2)
 
 
 def digest(value):
@@ -22,14 +24,23 @@ def digest(value):
 def password_hash(value):
     if not 10 <= len(value) <= 128:
         raise HTTPException(400, "password_length")
-    return hasher.hash(value)
+    if not password_slots.acquire(timeout=3):
+        raise HTTPException(503, "server_busy", headers={"Retry-After": "2"})
+    try:
+        return hasher.hash(value)
+    finally:
+        password_slots.release()
 
 
 def verify(encoded, password):
+    if not password_slots.acquire(timeout=3):
+        raise HTTPException(503, "server_busy", headers={"Retry-After": "2"})
     try:
         return hasher.verify(encoded or DUMMY_HASH, password[:129])
     except (VerificationError, InvalidHashError):
         return False
+    finally:
+        password_slots.release()
 
 
 def email_address(value):
@@ -37,12 +48,6 @@ def email_address(value):
     if len(value) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value):
         raise HTTPException(400, "invalid_email")
     return value
-
-
-def safe_name(value):
-    value = unicodedata.normalize("NFC", value.replace("\\", "/").split("/")[-1])
-    value = "".join(c for c in value if unicodedata.category(c)[0] != "C" and c not in '<>:"|?*')
-    return value.strip(" .")[:180] or "file"
 
 
 def rate_limit(key, limit, seconds):

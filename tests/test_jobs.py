@@ -221,7 +221,7 @@ def test_gzip_extraction_recovers_the_inner_name(admin_client, tmp_path):
     assert produced[0].read_bytes() == b'local content'
 
 
-def test_filled_form_values_are_marked_for_rendering(admin_client):
+def test_filled_form_values_have_appearance_streams(admin_client):
     from reportlab.pdfgen import canvas
     buf = io.BytesIO()
     form = canvas.Canvas(buf)
@@ -233,8 +233,9 @@ def test_filled_form_values_are_marked_for_rendering(admin_client):
     folder = finish(jid)
     result = PdfReader(folder / 'output' / 'document.pdf')
     assert result.get_fields()['name']['/V'] == 'Everyday'
-    # pypdf writes no appearance streams, so viewers must be asked to draw the values.
-    assert bool(result.trailer['/Root']['/AcroForm'].get('/NeedAppearances'))
+    widget = result.pages[0]['/Annots'][0].get_object()
+    assert b'Everyday' in widget['/AP']['/N'].get_data()
+    assert result.trailer['/Root']['/AcroForm']['/NeedAppearances'].value is False
 
 
 def test_gzip_archive_keeps_the_original_name(admin_client, pdf_bytes):

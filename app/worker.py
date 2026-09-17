@@ -12,6 +12,7 @@ from filelock import FileLock, Timeout as FileLockTimeout
 
 from . import config, storage
 from .db import connect, heartbeat, initialize, settings
+from .resources import has_capacity
 
 stopping = threading.Event()
 
@@ -21,7 +22,7 @@ def claim(cls):
     with connect(True) as db:
         limit = settings(db)[cls.lower() + "_concurrency"]
         active = db.execute("SELECT count(*) FROM jobs WHERE running=1 AND class=?", (cls,)).fetchone()[0]
-        if active >= limit:
+        if active >= limit or not has_capacity(db, cls):
             return None
         row = db.execute("""SELECT j.* FROM jobs j JOIN users u ON u.id=j.user_id
             LEFT JOIN scheduler s ON s.user_id=j.user_id AND s.class=j.class
@@ -52,7 +53,7 @@ def clear_work(folder, keep_output):
     for p in folder.iterdir():
         if p.name == "input" or (p.name == "output" and keep_output):
             continue
-        if p.is_dir():
+        if p.is_dir() and not p.is_symlink():
             shutil.rmtree(p)
         else:
             p.unlink(missing_ok=True)
@@ -69,11 +70,12 @@ def start_converter(jid):
             current = db.execute("SELECT deleting,state FROM jobs WHERE id=?", (jid,)).fetchone()
         if not current or current["deleting"] or current["state"] != "PROCESSING":
             return None
+        clear_work(storage.job_dir(jid), False)
         env = os.environ.copy()
         for key in list(env):
             if key.startswith("SMTP_"):
                 env.pop(key)
-        env.update({"OMP_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "PYTHONUNBUFFERED": "1"})
+        env.update({"OMP_NUM_THREADS": os.getenv("PROCESS_THREADS", "2"), "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "PYTHONUNBUFFERED": "1"})
         return subprocess.Popen([sys.executable, "-m", "app.run_job", jid], env=env,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                 start_new_session=os.name != "nt")
@@ -124,6 +126,12 @@ def execute(row):
             if folder.exists():
                 if not error and proc.returncode == 0 and (folder / "result.json").exists():
                     outputs = json.loads((folder / "result.json").read_text(encoding="utf-8"))
+                    if not isinstance(outputs, list) or len(outputs) > 2001:
+                        raise ValueError("invalid_outputs")
+                    for item in outputs:
+                        target = storage.local_file(folder / "output", item["path"])
+                        if item["size"] != target.stat().st_size:
+                            raise ValueError("invalid_outputs")
                     if folder_size(folder) > row["reserved"]:
                         error, outputs = "storage_full", []
                 else:
@@ -144,7 +152,12 @@ def execute(row):
                             reserved, jid))
         print("job " + jid[:8] + (" completed" if outputs else " failed") + " as " + row["operation"], flush=True)
     except Exception:
-        # Never leave a job stuck in PROCESSING because supervision itself failed.
+        try:
+            with storage.lock(jid, timeout=5):
+                if folder.exists():
+                    clear_work(folder, False)
+        except (OSError, FileLockTimeout):
+            pass
         with connect(True) as db:
             db.execute("""UPDATE jobs SET state='FAILED',error='interrupted',options='{}'
                           WHERE id=? AND state='PROCESSING' AND deleting=0""", (jid,))
@@ -181,6 +194,7 @@ def main():
         signal.signal(signal.SIGINT, stop)
         futures = []
         last_clean = last_beat = 0.0
+        cleanup_future = None
         with ThreadPoolExecutor(max_workers=14) as pool:
             while not stopping.is_set():
                 now = time.monotonic()
@@ -197,12 +211,14 @@ def main():
                 for cls in ("LIGHT", "MEDIUM", "HEAVY"):
                     while row := claim(cls):
                         futures.append(pool.submit(execute, row))
-                if now - last_clean > 30:
+                if now - last_clean > 30 and (cleanup_future is None or cleanup_future.done()):
                     last_clean = now
-                    try:
-                        storage.cleanup()
-                    except Exception:
-                        print("cleanup retry scheduled", flush=True)
+                    if cleanup_future is not None:
+                        try:
+                            cleanup_future.result()
+                        except Exception:
+                            print("cleanup retry scheduled", flush=True)
+                    cleanup_future = pool.submit(storage.cleanup)
                 stopping.wait(0.5)
 
 

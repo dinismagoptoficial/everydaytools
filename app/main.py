@@ -9,17 +9,19 @@ import os
 from contextlib import asynccontextmanager
 from email.message import EmailMessage
 from urllib.parse import urlparse
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from . import __version__, config, security, storage
+from . import __version__, config, security, storage, legal
 from .catalog import ALLOWED, OPERATIONS, available, catalog
 from .db import connect, initialize, settings
+from .downloads import DownloadResponse
 
 
 @asynccontextmanager
@@ -100,6 +102,7 @@ class Credentials(BaseModel):
 
 
 class Setup(Credentials):
+    legal_version: Literal[legal.VERSION]
     installation_name: str = Field(default="Everyday Tools", min_length=1, max_length=60)
     registration: bool = True
     max_upload_mb: int = Field(default=256, ge=1, le=10240)
@@ -125,7 +128,14 @@ class Preferences(BaseModel):
 
 
 def user_public(user):
-    return {k: user[k] for k in ("id", "email", "role")}
+    with connect() as db:
+        prefs = db.execute("SELECT name,language FROM user_preferences WHERE user_id=?", (user["id"],)).fetchone()
+    return {k: user[k] for k in ("id", "email", "role", "created")} | {"name": prefs["name"] if prefs else "", "language": prefs["language"] if prefs else None}
+
+
+@app.get("/api/legal")
+def legal_information():
+    return legal.information()
 
 
 @app.get("/api/status")
@@ -135,7 +145,7 @@ def status():
     prefs = settings()
     return {"setup": setup, "name": prefs["installation_name"], "registration": prefs["registration"],
             "retention_minutes": prefs["retention_minutes"], "max_upload_mb": prefs["max_upload_mb"],
-            "smtp": bool(os.getenv("SMTP_HOST")), "version": __version__}
+            "smtp": bool(os.getenv("SMTP_HOST") and os.getenv("PUBLIC_URL")), "version": __version__, "legal_version": legal.VERSION}
 
 
 @app.get("/api/health")
@@ -156,6 +166,8 @@ def setup(body: Setup, request: Request, response: Response):
         db.execute("INSERT INTO users VALUES (?,?,?,'ADMIN',0,?)", (uid, email, hashed, time.time()))
         for key in ("installation_name", "registration", "max_upload_mb", "retention_minutes"):
             db.execute("UPDATE settings SET value=? WHERE key=?", (json.dumps(getattr(body, key)), key))
+        for key, value in (("legal_version", body.legal_version), ("legal_reviewed_at", time.time())):
+            db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, json.dumps(value)))
         security.new_session(db, response, uid, request)
     return {"ok": True}
 
@@ -186,6 +198,9 @@ def login(body: Credentials, request: Request, response: Response):
     if not security.verify(user["password"] if user else None, body.password) or not user or user["disabled"]:
         raise HTTPException(401, "invalid_credentials")
     with connect(True) as db:
+        current = db.execute("SELECT password,disabled FROM users WHERE id=?", (user["id"],)).fetchone()
+        if not current or current["disabled"] or current["password"] != user["password"]:
+            raise HTTPException(401, "invalid_credentials")
         security.new_session(db, response, user["id"], request)
     return {"ok": True}
 
@@ -193,6 +208,36 @@ def login(body: Credentials, request: Request, response: Response):
 @app.get("/api/me")
 def me(user=Depends(security.session)):
     return user_public(user) | {"csrf": user["csrf"]}
+
+
+class AccountUpdate(BaseModel):
+    name: str = Field(max_length=80)
+    email: str = Field(max_length=254)
+    language: Literal["pt-PT", "en"]
+    current_password: str = Field(default="", max_length=128)
+
+
+@app.put("/api/me")
+def update_account(body: AccountUpdate, request: Request, response: Response, user=Depends(security.session)):
+    security.rate_limit("account:" + user["id"], 10, 60)
+    email = security.email_address(body.email)
+    if email != user["email"] and not security.verify(user["password"], body.current_password):
+        raise HTTPException(400, "invalid_credentials")
+    with connect(True) as db:
+        current = db.execute("SELECT * FROM users WHERE id=? AND disabled=0", (user["id"],)).fetchone()
+        if not current or current["password"] != user["password"]:
+            raise HTTPException(401, "unauthorized")
+        if current["email"] != user["email"]:
+            raise HTTPException(409, "invalid_state")
+        if db.execute("SELECT 1 FROM users WHERE email=? AND id<>?", (email, user["id"])).fetchone():
+            raise HTTPException(409, "account_exists")
+        db.execute("INSERT OR REPLACE INTO user_preferences VALUES (?,?,?)", (user["id"], body.name.strip(), body.language))
+        if email != current["email"]:
+            db.execute("UPDATE users SET email=? WHERE id=?", (email, user["id"]))
+            db.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
+            db.execute("DELETE FROM resets WHERE user_id=?", (user["id"],))
+            security.new_session(db, response, user["id"], request)
+    return {"ok": True}
 
 
 @app.post("/api/logout")
@@ -215,6 +260,9 @@ def change_password(body: PasswordChange, request: Request, response: Response, 
         raise HTTPException(400, "invalid_credentials")
     hashed = security.password_hash(body.password)
     with connect(True) as db:
+        current = db.execute("SELECT password,disabled FROM users WHERE id=?", (user["id"],)).fetchone()
+        if not current or current["disabled"] or current["password"] != user["password"]:
+            raise HTTPException(401, "unauthorized")
         db.execute("UPDATE users SET password=? WHERE id=?", (hashed, user["id"]))
         db.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
         db.execute("DELETE FROM resets WHERE user_id=?", (user["id"],))
@@ -242,7 +290,7 @@ def recover(body: Recovery, request: Request):
         message = EmailMessage()
         message["From"] = os.getenv("SMTP_FROM", "everyday-tools@localhost")
         message["To"] = email
-        message["Subject"] = "Everyday Tools — password"
+        message["Subject"] = "Everyday Tools: password"
         message.set_content("Alterar palavra-passe / Reset password (30 min):\n" + os.environ["PUBLIC_URL"].rstrip("/") + "/#reset/" + token)
         try:
             with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.getenv("SMTP_PORT", "587")), timeout=10) as smtp:
@@ -348,7 +396,7 @@ async def upload(job_id: str, index: int, request: Request, user=Depends(securit
                         raise HTTPException(410, "expired")
                     if shutil.disk_usage(config.JOBS).free < settings()["min_free_mb"] * 1024**2:
                         raise HTTPException(507, "storage_full")
-                    out.write(chunk)
+                    await run_in_threadpool(out.write, chunk)
         if count != files[index]["size"]:
             raise HTTPException(400, "incomplete_upload")
         await run_in_threadpool(storage.validate_file, path, files[index]["ext"])
@@ -423,7 +471,8 @@ def get_job(job_id: str, user=Depends(security.session)):
 def delete(job_id: str, user=Depends(security.session)):
     with connect() as db:
         storage.owned_job(db, job_id, user["id"])
-    storage.delete_job(job_id)
+    if not storage.delete_job(job_id):
+        return JSONResponse({"ok": True, "pending": True}, status_code=202)
     return {"ok": True}
 
 
@@ -443,7 +492,7 @@ def original(job_id: str, index: int, user=Depends(security.session)):
     if index < 0 or index >= len(files) or not files[index]["uploaded"]:
         raise HTTPException(404, "not_found")
     f = files[index]
-    return FileResponse(storage.job_dir(job_id) / "input" / f"{index}.{f['ext']}", filename=f["name"], media_type="application/octet-stream")
+    return DownloadResponse(storage.job_dir(job_id) / "input", f"{index}.{f['ext']}", filename=f["name"])
 
 
 @app.get("/api/jobs/{job_id}/download/{index}")
@@ -453,7 +502,7 @@ def download(job_id: str, index: int, user=Depends(security.session)):
     outputs = json.loads(row["outputs"])
     if row["state"] != "COMPLETED" or index < 0 or index >= len(outputs):
         raise HTTPException(404, "not_found")
-    return FileResponse(storage.job_dir(job_id) / "output" / outputs[index]["path"], filename=outputs[index]["name"], media_type="application/octet-stream")
+    return DownloadResponse(storage.job_dir(job_id) / "output", outputs[index]["path"], filename=security.safe_name(outputs[index]["name"]))
 
 
 @app.get("/api/admin")
@@ -497,7 +546,8 @@ def remove_user(uid: str, user=Depends(security.admin)):
     with connect() as db:
         ids = [r[0] for r in db.execute("SELECT id FROM jobs WHERE user_id=?", (uid,))]
     for jid in ids:
-        storage.delete_job(jid)
+        if not storage.delete_job(jid):
+            raise HTTPException(409, "deletion_pending")
     with connect(True) as db:
         db.execute("DELETE FROM scheduler WHERE user_id=?", (uid,))
         db.execute("DELETE FROM users WHERE id=?", (uid,))

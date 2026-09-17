@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import time
 import zipfile
 from pathlib import Path
@@ -81,9 +82,14 @@ def delete_job(job_id):
     with connect(True) as db:
         db.execute("UPDATE jobs SET deleting=1 WHERE id=?", (job_id,))
     # The job is already invisible and unusable; from here the removal may safely be retried.
-    await_idle(job_id)
+    if not await_idle(job_id):
+        return False
     try:
         with lock(job_id, timeout=40):
+            with connect() as db:
+                row = db.execute("SELECT running FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if row and row["running"]:
+                return False
             if folder.exists():
                 shutil.rmtree(folder)
             with connect(True) as db:
@@ -124,19 +130,31 @@ def cleanup():
 def validate_file(path: Path, ext: str):
     if ext not in ALLOWED:
         raise HTTPException(400, "unsupported_format")
-    header = path.open("rb").read(4096)
+    with path.open("rb") as stream:
+        header = stream.read(4096)
     valid = True
     if ext == "pdf":
         valid = header.startswith(b"%PDF-")
     elif ext in {"docx", "xlsx", "pptx", "odt", "ods", "odp", "zip"}:
         valid = zipfile.is_zipfile(path)
         if valid and ext != "zip":
+            with path.open("rb") as stream:
+                stream.seek(max(0, path.stat().st_size - 65557))
+                tail = stream.read(65557)
+            end = tail.rfind(b"PK\x05\x06")
+            if end < 0 or len(tail) - end < 22:
+                raise HTTPException(400, "invalid_file")
+            entries, directory_size = struct.unpack_from("<HI", tail, end + 10)
+            if entries > 10000 or directory_size > 8 * 1024**2:
+                raise HTTPException(413, "too_large")
             with zipfile.ZipFile(path) as z:
                 names = z.namelist()
                 valid = len(names) < 10000 and ("[Content_Types].xml" in names if ext in {"docx", "xlsx", "pptx"} else "mimetype" in names)
     elif ext in {"doc", "xls", "ppt"}:
         valid = header.startswith(bytes.fromhex("d0cf11e0a1b11ae1"))
     elif ext == "svg":
+        if path.stat().st_size > 4 * 1024**2:
+            raise HTTPException(413, "too_large")
         from defusedxml import ElementTree
         try:
             root = ElementTree.parse(path).getroot()
@@ -184,7 +202,7 @@ def media_matches(path: Path, ext: str, header: bytes, mime):
             return mime.startswith(MEDIA_FAMILIES[ext])
         return mime in {"application/x-tar", "application/gzip", "application/x-gzip", "application/x-7z-compressed"}
     # Without libmagic: identify images through their decoder, otherwise match explicit signatures.
-    # This mirrors what libmagic reports — the format, not the integrity of every chunk.
+    # This mirrors what libmagic reports: the format, not the integrity of every chunk.
     if ext in {"jpg", "jpeg", "png", "heic", "heif", "avif", "webp", "gif", "bmp", "tiff"}:
         try:
             import pillow_heif
@@ -200,6 +218,17 @@ def media_matches(path: Path, ext: str, header: bytes, mime):
         import tarfile
         return tarfile.is_tarfile(path)
     return any(header.startswith(s) for s in MEDIA_SIGNATURES.get(ext, []))
+
+
+def local_file(folder: Path, name: str):
+    if Path(name).name != name or "/" in name or "\\" in name or name in {".", ".."}:
+        raise HTTPException(404, "not_found")
+    target = folder / name
+    if folder.is_symlink() or target.is_symlink() or not target.is_file():
+        raise HTTPException(404, "not_found")
+    if not target.resolve().is_relative_to(folder.resolve()):
+        raise HTTPException(404, "not_found")
+    return target
 
 
 def public_job(row):

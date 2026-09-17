@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tarfile
 import zipfile
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 
 from PIL import Image, ImageDraw, ImageOps
@@ -51,16 +52,37 @@ def open_image(path):
         import cairosvg
         from .storage import validate_file
         validate_file(path, "svg")
-        raw = cairosvg.svg2png(url=str(path), output_width=1600, output_height=1600, unsafe=False)
+        width, height = svg_dimensions(path)
+        raw = cairosvg.svg2png(bytestring=path.read_bytes(), output_width=width, output_height=height, unsafe=False)
         image = Image.open(io.BytesIO(raw))
     else:
         image = Image.open(path)
-    if image.width * image.height > Image.MAX_IMAGE_PIXELS:
-        raise ValueError("image_too_large")
-    return ImageOps.exif_transpose(image)
+    with image:
+        if image.width * image.height > Image.MAX_IMAGE_PIXELS:
+            raise ValueError("image_too_large")
+        return ImageOps.exif_transpose(image)
+
+
+def svg_dimensions(path):
+    from defusedxml import ElementTree
+    root = ElementTree.parse(path).getroot()
+    viewbox = [float(v) for v in root.get("viewBox", "0 0 300 150").replace(",", " ").split()]
+    if len(viewbox) != 4 or any(not math.isfinite(v) for v in viewbox) or min(viewbox[2:]) <= 0:
+        raise ValueError("invalid_file")
+    units = {"": 1, "px": 1, "pt": 96 / 72, "pc": 16, "mm": 96 / 25.4, "cm": 96 / 2.54, "in": 96}
+    def dimension(key, fallback):
+        match = re.fullmatch(r"\s*([0-9]+(?:\.[0-9]+)?)\s*(px|pt|pc|mm|cm|in)?\s*", root.get(key, ""))
+        return float(match[1]) * units[match[2] or ""] if match else fallback
+    width, height = dimension("width", viewbox[2]), dimension("height", viewbox[3])
+    if not math.isfinite(width + height) or min(width, height) <= 0:
+        raise ValueError("invalid_file")
+    scale = min(1, 1600 / max(width, height))
+    return max(1, round(width * scale)), max(1, round(height * scale))
 
 
 def write_image(image, dest, fmt, quality=80):
+    if image.mode == "P":
+        image = image.convert("RGBA" if "transparency" in image.info else "RGB")
     fmt = {"jpg": "JPEG", "png": "PNG", "webp": "WEBP", "avif": "AVIF"}[fmt]
     if fmt == "JPEG":
         if image.mode in ("RGBA", "LA"):
@@ -74,15 +96,21 @@ def write_image(image, dest, fmt, quality=80):
     clean.save(dest, format=fmt, quality=int(quality), optimize=True)
 
 
-def background(image):
-    # U²-Net small, locally installed ONNX. No download code exists in this runtime path.
-    import numpy as np
+@lru_cache(maxsize=1)
+def background_session():
     import onnxruntime as ort
     opts = ort.SessionOptions()
     opts.intra_op_num_threads = int(os.getenv("PROCESS_THREADS", "2"))
     opts.inter_op_num_threads = 1
+    opts.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    opts.add_session_config_entry("session.inter_op.allow_spinning", "0")
     model = config.MODELS / "u2netp.onnx"
-    session = ort.InferenceSession(str(model), sess_options=opts, providers=["CPUExecutionProvider"])
+    return ort.InferenceSession(str(model), sess_options=opts, providers=["CPUExecutionProvider"])
+
+
+def background(image):
+    import numpy as np
+    session = background_session()
     rgb = image.convert("RGB")
     data = np.asarray(rgb.resize((320, 320), Image.Resampling.LANCZOS), dtype=np.float32) / 255.0
     data = (data - np.array([0.485, 0.456, 0.406], dtype=np.float32)) / np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -177,9 +205,14 @@ def edit_pdf(reader, path, output, options):
     writer = PdfWriter()
     order = page_selection(options.get("pages", ""), len(reader.pages))
     for idx in order:
-        page = reader.pages[idx]
+        page = PdfWriter().add_page(reader.pages[idx])
         page.transfer_rotation_to_content()
-        width, height = float(page.mediabox.width), float(page.mediabox.height)
+        from pypdf import Transformation
+        left, bottom = float(page.cropbox.left), float(page.cropbox.bottom)
+        width, height = float(page.cropbox.width), float(page.cropbox.height)
+        page.add_transformation(Transformation().translate(-left, -bottom))
+        page.mediabox.lower_left = page.cropbox.lower_left = (0, 0)
+        page.mediabox.upper_right = page.cropbox.upper_right = (width, height)
         items = [a for a in annotations if a.get("page") == idx + 1]
         redactions = [a for a in items if a.get("type") == "redact"]
         if redactions:
@@ -193,7 +226,7 @@ def edit_pdf(reader, path, output, options):
             pdf = canvas.Canvas(buf, pagesize=(width, height))
             pdf.drawImage(ImageReader(im), 0, 0, width, height)
             pdf.save()
-            page = PdfReader(io.BytesIO(buf.getvalue())).pages[0]
+            page = PdfWriter(clone_from=io.BytesIO(buf.getvalue())).pages[0]
         buf = io.BytesIO()
         c = canvas.Canvas(buf, pagesize=(width, height))
         for a in items:
@@ -264,8 +297,22 @@ def pdf_jobs(paths, output, op, options):
                 c.showPage()
         c.save()
         return
-    reader = pdf_reader(paths[0], options)
     target = output / "document.pdf"
+    if op == "pdf_repair":
+        password_file = output.parent / "qpdf-password"
+        password_file.write_text(str(options.get("password", "")), encoding="utf-8")
+        result = subprocess.run(["qpdf", "--password-file=" + str(password_file), str(paths[0]), str(target)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+        if result.returncode not in (0, 3):
+            raise ValueError("conversion_failed")
+        pdf_reader(target, options)
+        return
+    reader = pdf_reader(paths[0], options)
+    source_path = paths[0]
+    if reader.is_encrypted and op in {"pdf_compress", "pdf_ocr", "pdf_archive"}:
+        source_path = output.parent / "decrypted.pdf"
+        decrypted = PdfWriter()
+        decrypted.append(reader)
+        decrypted.write(source_path)
     if op == "pdf_edit":
         return edit_pdf(reader, paths[0], output, options)
     if op == "pdf_text":
@@ -293,16 +340,11 @@ def pdf_jobs(paths, output, op, options):
         preset = choice(options, "preset", "balanced", {"quality", "balanced", "small"})
         command(["gs", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.7",
                  "-dPDFSETTINGS=" + {"quality": "/printer", "balanced": "/ebook", "small": "/screen"}[preset],
-                 "-sOutputFile=" + str(target), paths[0]])
+                 "-sOutputFile=" + str(target), source_path])
         return
     if op in {"pdf_ocr", "pdf_archive"}:
-        args = ["ocrmypdf", "--skip-text", "--jobs", "1", "--output-type", "pdfa-2" if op == "pdf_archive" else "pdf", "-l", "por+eng", paths[0], target]
+        args = ["ocrmypdf", "--skip-text", "--jobs", "1", "--output-type", "pdfa-2" if op == "pdf_archive" else "pdf", "-l", "por+eng", source_path, target]
         command(args)
-        return
-    if op == "pdf_repair":
-        result = subprocess.run(["qpdf", str(paths[0]), str(target)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
-        if result.returncode not in (0, 3):
-            raise ValueError("conversion_failed")
         return
     writer = PdfWriter()
     if op == "pdf_merge":
@@ -329,8 +371,6 @@ def pdf_jobs(paths, output, op, options):
             raise ValueError("no_forms")
         for page in writer.pages:
             writer.update_page_form_field_values(page, fields, auto_regenerate=False)
-        # Ask readers to draw the values we wrote; pypdf does not build appearance streams.
-        writer.set_need_appearances_writer(True)
     else:
         indices = page_selection(options.get("pages"), len(reader.pages))
         if options.get("exclude"):
@@ -338,7 +378,7 @@ def pdf_jobs(paths, output, op, options):
         if not indices:
             raise ValueError("invalid_pages")
         for position, index in enumerate(indices, start=1):
-            page = reader.pages[index]
+            page = PdfWriter().add_page(reader.pages[index])
             if op == "pdf_rotate":
                 page.rotate(int(choice(options, "angle", 90, {90, 180, 270})))
             if op in {"pdf_watermark", "pdf_number"}:
@@ -382,13 +422,18 @@ def office_jobs(paths, output, op, options):
 def media_jobs(paths, output, op, options):
     threads = str(int(os.getenv("PROCESS_THREADS", "2")))
     for i, path in enumerate(paths):
-        args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-threads", threads,
+        args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-threads", threads, "-filter_threads", threads, "-filter_complex_threads", threads,
                 "-protocol_whitelist", "file,pipe", "-i", path, "-map_metadata", "-1", "-threads", threads]
         if op.startswith("audio"):
             fmt = choice(options, "format", "mp3", {"mp3", "wav", "flac", "aac", "m4a", "ogg"})
             args += ["-vn"]
-            if fmt not in {"wav", "flac"}:
-                args += ["-b:a", str(int(number(options, "bitrate", 192, 32, 320))) + "k"]
+            bitrate = int(number(options, "bitrate", 192, 32, 320))
+            if fmt == "ogg":
+                # libvorbis refuses fixed bitrates that its sample rate cannot carry,
+                # so low rate sources are encoded on the quality scale instead.
+                args += ["-c:a", "libvorbis", "-q:a", str(min(10, max(0, round((bitrate - 64) / 32 + 2))))]
+            elif fmt not in {"wav", "flac"}:
+                args += ["-b:a", str(bitrate) + "k"]
             if op == "audio_normalize":
                 args += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
         elif op == "video_gif":
@@ -405,7 +450,7 @@ def media_jobs(paths, output, op, options):
             args += ["-c:v", {"h264": "libx264", "h265": "libx265", "vp9": "libvpx-vp9"}[codec],
                      "-crf", str({"quality": 20, "balanced": 26, "small": 32}[preset])]
             if codec == "h265":
-                args += ["-x265-params", "pools=2:frame-threads=1"]
+                args += ["-x265-params", f"pools={threads}:frame-threads=1"]
             if codec == "vp9":
                 args += ["-b:v", "0", "-cpu-used", "4"]
             if "resolution" in options and options["resolution"] != "original":
@@ -457,7 +502,7 @@ def archive_jobs(paths, output, op, options, files):
                 for i, p in enumerate(paths):
                     tar.add(p, arcname=f"{i+1}-{files[i]['name']}", recursive=False)
         elif fmt == "gz":
-            from .security import safe_name
+            from .filenames import safe_name
             name = safe_name(files[0]["name"]) if files else "file"
             with paths[0].open("rb") as src, gzip.open(output / (name + ".gz"), "wb") as dst:
                 shutil.copyfileobj(src, dst, 1024 * 1024)
@@ -477,7 +522,7 @@ def archive_jobs(paths, output, op, options, files):
         if size < 0 or total + size > config.MAX_EXTRACT or count > 2000:
             raise ValueError("archive_limit")
         # Flatten safely with unique internal names; archive paths never reach the filesystem.
-        from .security import safe_name
+        from .filenames import safe_name
         dest = output / (str(count) + "-" + safe_name(p.name))
         with dest.open("xb") as out:
             total += limited_copy(source, out, config.MAX_EXTRACT - total)
@@ -518,7 +563,7 @@ def archive_jobs(paths, output, op, options, files):
             def __init__(self, name):
                 nonlocal count
                 count += 1
-                from .security import safe_name
+                from .filenames import safe_name
                 self.file = (output / (str(count) + "-" + safe_name(archive_member(name).name))).open("w+b")
             def write(self, data):
                 nonlocal total

@@ -39,7 +39,7 @@ O instalador anuncia `everyday-tools.local` com um serviço Avahi dedicado (`eve
 
 Redes guest, VLANs e alguns dispositivos não propagam mDNS. Usa o IP indicado nesses casos. Se outro dispositivo já publicar o mesmo nome, usa o IP ou escolhe outro nome no serviço.
 
-Em Linux Mint e noutros sistemas de secretária, o `avahi-daemon` e o `libnss-mdns` costumam já estar presentes; o instalador só os instala se faltarem. Se tiveres a firewall `ufw` ativa, permite o mDNS com `sudo ufw allow 5353/udp` — o instalador avisa quando deteta esta situação. As portas publicadas pelo Docker não passam pelo `ufw`, por isso o acesso por IP continua a funcionar mesmo sem essa regra.
+Em Linux Mint e noutros sistemas de secretária, o `avahi-daemon` e o `libnss-mdns` costumam já estar presentes; o instalador só os instala se faltarem. Se tiveres a firewall `ufw` ativa, permite o mDNS com `sudo ufw allow 5353/udp`. O instalador avisa quando deteta esta situação. As portas publicadas pelo Docker não passam pelo `ufw`, por isso o acesso por IP continua a funcionar mesmo sem essa regra.
 
 Estado do serviço:
 
