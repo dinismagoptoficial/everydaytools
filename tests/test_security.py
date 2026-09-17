@@ -33,7 +33,7 @@ def test_registration_permissions_and_idor(admin_client, pdf_bytes):
     with TestClient(app, headers={"X-Requested-With": "EverydayTools"}) as other:
         authenticate(other, "other@example.test", setup=False)
         assert other.get("/api/jobs").json() == []
-        for path in (f"/api/jobs/{jid}", f"/api/jobs/{jid}/original/0", f"/api/jobs/{jid}/download/0"):
+        for path in (f"/api/jobs/{jid}", f"/api/jobs/{jid}/original/0", f"/api/jobs/{jid}/download/0", f"/api/jobs/{jid}/matte/0/mask"):
             assert other.get(path).status_code == 404
         assert other.delete(f"/api/jobs/{jid}").status_code == 404
         assert other.post(f"/api/jobs/{jid}/run", json={"operation": "pdf_text"}).status_code == 404

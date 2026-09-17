@@ -38,12 +38,12 @@ Prepara Docker, Compose e Avahi, instala em `/opt/everyday-tools` e mostra o end
 | PDF | Juntar, dividir, ordenar, rodar, comprimir, proteger, desbloquear, OCR em português e inglês, extrair texto e imagens, preencher formulários, PDF/A e reparação |
 | Editor PDF | Texto, imagens, assinatura visual, desenho, realce, sublinhado, numeração, marca de água e ocultação permanente |
 | Documentos | Word, Excel, PowerPoint e OpenDocument para PDF; conversão entre CSV, XLSX e ODS |
-| Imagens | Conversão, compressão, dimensões, remoção de metadados e remoção de fundo com modelo local |
+| Imagens | Conversão, compressão, dimensões, remoção de metadados e remoção de fundo com modelo local e ajuste manual da máscara |
 | Vídeo e áudio | Conversão, compressão, resolução, codecs, GIF, extração de áudio, vídeo sem som e normalização de volume |
 | Arquivos | Criar e extrair ZIP, TAR, GZIP e 7z |
 | Dia a dia | QR e códigos de barras, palavras-passe, frases-passe, texto, comparação, unidades, percentagens, idade e timestamps |
 
-As ferramentas compatíveis aparecem depois de escolheres os ficheiros. Operações em lote podem produzir resultados individuais e um ZIP para descarregar tudo.
+As ferramentas compatíveis aparecem depois de escolheres os ficheiros. Operações em lote podem produzir resultados individuais e um ZIP para descarregar tudo. Os resultados compatíveis podem ser pré-visualizados antes do download. Na remoção de fundo podes corrigir a máscara, escolher uma cor ou carregar outra imagem e preparar o PNG final no browser.
 
 O editor acrescenta conteúdo; não reescreve o texto original. A assinatura é visual, sem certificado digital. As páginas com ocultações permanentes são reconstruídas como imagem. A fidelidade de Office, o OCR e os contornos da remoção de fundo dependem dos ficheiros. PDF/A é produzido pelo OCRmyPDF, sem validação independente com veraPDF. Os formulários suportam campos de texto e lista, sem XFA. GZIP aceita um ficheiro por operação.
 

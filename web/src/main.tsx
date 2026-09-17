@@ -28,6 +28,7 @@ import {
   LoaderCircle,
   CircleAlert,
   ArrowLeftRight,
+  Eye,
 } from "lucide-react";
 import {
   api,
@@ -51,6 +52,8 @@ import "./style.css";
 const Everyday = lazy(() => import("./Everyday"));
 const Account = lazy(() => import("./Account"));
 const Admin = lazy(() => import("./Admin"));
+const Preview = lazy(() => import("./Preview"));
+const MatteEditor = lazy(() => import("./MatteEditor"));
 
 function App() {
   const [lang, setLang] = useState<Language>(() =>
@@ -94,7 +97,9 @@ function Application({
     [active, setActive] = useState<Job>(),
     [desired, setDesired] = useState("");
   const [profile, setProfile] = useState(false),
-    [confirmDelete, setConfirmDelete] = useState<Job>();
+    [confirmDelete, setConfirmDelete] = useState<Job>(),
+    [preview, setPreview] = useState<{ job: Job; index: number }>(),
+    [matte, setMatte] = useState<{ job: Job; index: number }>();
   const input = useRef<HTMLInputElement>(null),
     dialogRef = useRef<HTMLDivElement>(null);
 
@@ -173,9 +178,12 @@ function Application({
       setActive(undefined);
       setError("not_found");
     }
-  }, [jobs, active]);
+    if (preview && !jobs.some((j) => j.id === preview.job.id))
+      setPreview(undefined);
+    if (matte && !jobs.some((j) => j.id === matte.job.id)) setMatte(undefined);
+  }, [jobs, active, preview, matte]);
   useEffect(() => {
-    if (!active && !profile && !confirmDelete) return;
+    if (!active && !profile && !confirmDelete && !preview && !matte) return;
     const previous = document.activeElement as HTMLElement;
     const root = dialogRef.current;
     const focusable = () =>
@@ -190,6 +198,8 @@ function Application({
         setActive(undefined);
         setProfile(false);
         setConfirmDelete(undefined);
+        setPreview(undefined);
+        setMatte(undefined);
       }
       if (e.key === "Tab") {
         const els = focusable();
@@ -212,7 +222,7 @@ function Application({
       document.body.style.overflow = overflow;
       previous?.focus();
     };
-  }, [active?.id, profile, confirmDelete?.id]);
+  }, [active?.id, profile, confirmDelete?.id, preview?.job.id, matte?.job.id]);
 
   function navigate(target: string) {
     setPage(target);
@@ -380,7 +390,7 @@ function Application({
         <div className="sidebar-scrim" onClick={() => setMobile(false)} />
       )}
       <aside
-        inert={Boolean(active || profile || confirmDelete)}
+        inert={Boolean(active || profile || confirmDelete || preview || matte)}
         className={"sidebar " + (mobile ? "open" : "")}
       >
         <button className="brand" onClick={() => navigate("home")}>
@@ -462,7 +472,7 @@ function Application({
       </aside>
       <div
         className="workspace"
-        inert={Boolean(active || profile || confirmDelete)}
+        inert={Boolean(active || profile || confirmDelete || preview || matte)}
       >
         <header className="topbar">
           <div className="breadcrumb">
@@ -511,10 +521,7 @@ function Application({
                 <div>
                   <div className="eyebrow">
                     {page === "home"
-                      ? t(
-                          "FERRAMENTAS",
-                          "TOOLS",
-                        )
+                      ? t("FERRAMENTAS", "TOOLS")
                       : t("FERRAMENTAS", "TOOLS")}
                   </div>
                   <h1>
@@ -702,6 +709,7 @@ function Application({
                   {jobs.length ? (
                     <JobList
                       jobs={jobs.slice(0, 3)}
+                      onPreview={(j, i) => setPreview({ job: j, index: i })}
                       onDelete={setConfirmDelete}
                       onOpen={(j) => {
                         setDesired("");
@@ -756,6 +764,7 @@ function Application({
               {jobs.length ? (
                 <JobList
                   jobs={jobs}
+                  onPreview={(j, i) => setPreview({ job: j, index: i })}
                   onDelete={setConfirmDelete}
                   onOpen={(j) => {
                     setDesired("");
@@ -838,6 +847,28 @@ function Application({
         </div>
       )}
       <div ref={dialogRef}>
+        {matte && (
+          <Suspense fallback={null}>
+            <MatteEditor
+              job={matte.job}
+              index={matte.index}
+              onClose={() => setMatte(undefined)}
+            />
+          </Suspense>
+        )}
+        {preview && (
+          <Suspense fallback={null}>
+            <Preview
+              job={jobs.find((j) => j.id === preview.job.id) ?? preview.job}
+              index={preview.index}
+              onClose={() => setPreview(undefined)}
+              onEdit={(index) => {
+                setPreview(undefined);
+                setMatte({ job: preview.job, index });
+              }}
+            />
+          </Suspense>
+        )}
         {active && (
           <Options
             key={active.id}
@@ -911,11 +942,13 @@ function JobList({
   onDelete,
   onOpen,
   onCancel,
+  onPreview,
 }: {
   jobs: Job[];
   onDelete: (j: Job) => void;
   onOpen: (j: Job) => void;
   onCancel: (j: Job) => void;
+  onPreview: (j: Job, index: number) => void;
 }) {
   const t = useText(),
     copy = useToolCopy(),
@@ -986,6 +1019,13 @@ function JobList({
           <div className="job-actions">
             {job.state === "COMPLETED" && (
               <>
+                <button
+                  className="secondary compact"
+                  onClick={() => onPreview(job, 0)}
+                >
+                  <Eye size={15} />
+                  {t("Pré-visualizar", "Preview")}
+                </button>
                 <a
                   className="secondary compact"
                   href={`/api/jobs/${job.id}/download/${Math.max(

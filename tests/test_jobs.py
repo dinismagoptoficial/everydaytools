@@ -7,10 +7,10 @@ import pytest
 from PIL import Image
 from pypdf import PdfReader
 
-from app import storage
+from app import processors, storage
 from app.db import connect
 from app.processors import process, page_selection
-from app.worker import claim, recover
+from app.worker import claim, clear_work, recover
 from conftest import fake_job, upload
 
 
@@ -141,6 +141,48 @@ def test_image_metadata_removed(admin_client):
     with Image.open(folder / 'output' / 'image-1.jpg') as result:
         assert not result.getexif()
         assert result.size == (64, 32)
+
+
+def test_background_result_keeps_private_editor_assets(admin_client, monkeypatch):
+    image = Image.new('RGB', (80, 40), '#326891')
+    buf = io.BytesIO()
+    image.save(buf, 'PNG')
+
+    def fake_background(source):
+        result = source.convert('RGBA')
+        alpha = Image.new('L', source.size, 0)
+        alpha.paste(255, (20, 0, 60, 40))
+        result.putalpha(alpha)
+        return result
+
+    monkeypatch.setattr(processors, 'background', fake_background)
+    jid = upload(admin_client, buf.getvalue(), 'person.png')
+    with connect(True) as db:
+        db.execute(
+            "UPDATE jobs SET operation='image_background',options=? WHERE id=?",
+            ('{"background_colour":"#ffffff"}', jid),
+        )
+    folder = finish(jid)
+
+    mask = folder / 'editor' / '0.mask.png'
+    source = folder / 'editor' / '0.source.webp'
+    assert mask.exists() and source.exists()
+    with Image.open(mask) as matte:
+        assert matte.mode == 'L'
+        assert matte.getpixel((5, 5)) == 0
+        assert matte.getpixel((40, 5)) == 255
+    with Image.open(folder / 'output' / 'image-1.png') as result:
+        assert result.getpixel((5, 5))[:3] == (255, 255, 255)
+
+    assert admin_client.get(f'/api/jobs/{jid}/matte/0/mask').status_code == 200
+    assert admin_client.get(f'/api/jobs/{jid}/matte/0/source').status_code == 200
+    assert admin_client.get(f'/api/jobs/{jid}/matte/1/source').status_code == 404
+
+    (folder / 'work').mkdir()
+    (folder / 'work' / 'temporary').write_bytes(b'temporary')
+    clear_work(folder, True)
+    assert mask.exists() and source.exists()
+    assert not (folder / 'work').exists()
 
 
 def test_restart_marks_processing_failed(admin_client):

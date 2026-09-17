@@ -171,6 +171,11 @@ def image_jobs(paths, output, op, options):
         with open_image(path) as im:
             if op == "image_background":
                 im = background(im)
+                editor = output.parent / "editor"
+                editor.mkdir(exist_ok=True)
+                im.getchannel("A").save(editor / f"{i}.mask.png", optimize=True)
+                source = im.convert("RGB")
+                source.save(editor / f"{i}.source.webp", format="WEBP", quality=95, method=4)
                 fill = str(options.get("background_colour", ""))
                 if fill:
                     if not re.fullmatch(r"#[0-9a-fA-F]{6}", fill):

@@ -492,6 +492,17 @@ def download(job_id: str, index: int, user=Depends(security.session)):
     return DownloadResponse(storage.job_dir(job_id) / "output", outputs[index]["path"], filename=security.safe_name(outputs[index]["name"]))
 
 
+@app.get("/api/jobs/{job_id}/matte/{index}/{asset}")
+def matte_asset(job_id: str, index: int, asset: Literal["mask", "source"], user=Depends(security.session)):
+    with connect() as db:
+        row = storage.owned_job(db, job_id, user["id"])
+    files = json.loads(row["files"])
+    if row["state"] != "COMPLETED" or row["operation"] != "image_background" or index < 0 or index >= len(files):
+        raise HTTPException(404, "not_found")
+    suffix = "mask.png" if asset == "mask" else "source.webp"
+    return DownloadResponse(storage.job_dir(job_id) / "editor", f"{index}.{suffix}", filename=f"{asset}.{suffix.split('.')[-1]}")
+
+
 @app.get("/api/admin")
 def admin_overview(user=Depends(security.admin)):
     with connect() as db:

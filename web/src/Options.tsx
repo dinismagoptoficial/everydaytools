@@ -529,8 +529,8 @@ export default function Options({
                 </fieldset>
                 <p className="notice">
                   {t(
-                    "Sem cor escolhida o resultado é PNG com transparência. Contornos finos podem precisar de revisão.",
-                    "With no colour chosen the result is a transparent PNG. Fine edges may need review.",
+                    "Sem cor escolhida o resultado é PNG com transparência. Depois de processar, podes ajustar a máscara e carregar uma imagem de fundo.",
+                    "With no colour chosen the result is a transparent PNG. After processing, you can adjust the mask and upload a background image.",
                   )}
                 </p>
               </>

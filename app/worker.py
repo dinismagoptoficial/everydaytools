@@ -51,7 +51,7 @@ def kill_tree(process):
 
 def clear_work(folder, keep_output):
     for p in folder.iterdir():
-        if p.name == "input" or (p.name == "output" and keep_output):
+        if p.name == "input" or (p.name in {"output", "editor"} and keep_output):
             continue
         if p.is_dir() and not p.is_symlink():
             shutil.rmtree(p)

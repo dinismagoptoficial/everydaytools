@@ -38,12 +38,12 @@ The installer prepares Docker, Compose and Avahi, installs into `/opt/everyday-t
 | PDF | Merge, split, reorder, rotate, compress, protect, unlock, Portuguese and English OCR, extract text and images, fill forms, PDF/A and repair |
 | PDF editor | Text, images, visual signatures, drawing, highlights, underlining, page numbers, watermarks and permanent redaction |
 | Documents | Word, Excel, PowerPoint and OpenDocument to PDF; CSV, XLSX and ODS conversion |
-| Images | Conversion, compression, resizing, metadata removal and local background removal |
+| Images | Conversion, compression, resizing, metadata removal, local background removal and manual mask adjustment |
 | Video and audio | Conversion, compression, resolution, codecs, GIF, audio extraction, muting and volume normalisation |
 | Archives | Create and extract ZIP, TAR, GZIP and 7z |
 | Everyday | QR and barcodes, passwords, passphrases, text, comparisons, units, percentages, age and timestamps |
 
-Compatible tools appear after selecting files. Batch operations can provide individual outputs and a ZIP containing all results.
+Compatible tools appear after selecting files. Batch operations can provide individual outputs and a ZIP containing all results. Compatible results can be previewed before download. After background removal, you can correct the mask, choose a colour or upload another image and prepare the final PNG in the browser.
 
 The editor adds content rather than rewriting existing text. Signatures are visual, without digital certificates. Redacted pages are rebuilt as images. Office fidelity, OCR and background removal edges depend on the input. PDF/A is produced by OCRmyPDF without independent veraPDF validation. Forms support text and list fields, without XFA. GZIP accepts one file per operation.
 
