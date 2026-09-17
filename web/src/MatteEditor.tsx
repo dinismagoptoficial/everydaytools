@@ -233,12 +233,31 @@ export default function MatteEditor({
     });
   }
 
-  useEffect(() => {
+  function fitCanvas() {
     const canvas = view.current;
-    if (!canvas || !ready) return;
+    const box = stage.current;
+    if (!canvas || !box) return;
     canvas.width = mask.current.width;
     canvas.height = mask.current.height;
+    // The element box is sized to match the bitmap exactly, so a pointer position
+    // maps to one mask pixel with no letterboxing to account for.
+    const available = box.clientWidth - 28;
+    const scale = Math.min(
+      available / mask.current.width,
+      (window.innerHeight * 0.52) / mask.current.height,
+      1,
+    );
+    canvas.style.width = Math.max(1, Math.round(mask.current.width * scale)) + "px";
+    canvas.style.height = Math.max(1, Math.round(mask.current.height * scale)) + "px";
     render();
+  }
+
+  useEffect(() => {
+    if (!ready) return;
+    fitCanvas();
+    const observer = new ResizeObserver(() => fitCanvas());
+    if (stage.current) observer.observe(stage.current);
+    return () => observer.disconnect();
   }, [ready, fill, fit]);
 
   function undo() {

@@ -24,7 +24,8 @@ export default function Auth({
   );
   const [step, setStep] = useState(1),
     [email, setEmail] = useState(""),
-    [password, setPassword] = useState("");
+    [password, setPassword] = useState(""),
+    [website, setWebsite] = useState("");
   const [name, setName] = useState("Everyday Tools"),
     [registration, setRegistration] = useState(true);
   const [maxUpload, setMaxUpload] = useState(256),
@@ -66,7 +67,11 @@ export default function Auth({
             }
           : mode === "reset"
             ? { token, password }
-            : { email, password },
+            : mode === "register"
+              ? { email, password, website }
+              : mode === "recover"
+                ? { email }
+                : { email, password },
       );
       if (mode === "recover") setSent(true);
       else if (mode === "reset") {
@@ -150,6 +155,18 @@ export default function Auth({
         <form onSubmit={submit}>
           {!(mode === "setup" && step > 1) && (
             <>
+              {mode === "register" && (
+                <label className="trap-field" aria-hidden="true">
+                  Website
+                  <input
+                    name="website"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                  />
+                </label>
+              )}
               {mode !== "reset" && (
                 <label>
                   E-mail

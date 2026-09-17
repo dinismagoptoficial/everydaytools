@@ -92,7 +92,7 @@ export default function MailSettings() {
     setError("");
     setNote("");
     try {
-      await api("/admin/smtp/test", "POST");
+      await api("/admin/smtp/test", "POST", form);
       setNote(
         t(
           "Mensagem de teste enviada para o teu e-mail.",
@@ -227,7 +227,7 @@ export default function MailSettings() {
         <button
           type="button"
           className="secondary"
-          disabled={busy !== "" || !form.host}
+          disabled={busy !== "" || !form.host || !form.sender}
           onClick={test}
         >
           {busy === "test"

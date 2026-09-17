@@ -97,6 +97,10 @@ class Credentials(BaseModel):
     password: str = Field(max_length=128)
 
 
+class Registration(Credentials):
+    website: str = Field(default="", max_length=200)
+
+
 class Setup(Credentials):
     legal_version: Literal[legal.VERSION]
     installation_name: str = Field(default="Everyday Tools", min_length=1, max_length=60)
@@ -169,9 +173,13 @@ def setup(body: Setup, request: Request, response: Response):
 
 
 @app.post("/api/register")
-def register(body: Credentials, request: Request, response: Response):
+def register(body: Registration, request: Request, response: Response):
     security.rate_limit("register:" + security.ip(request), settings()["register_limit"], 600)
-    email, hashed = security.email_address(body.email), security.password_hash(body.password)
+    email = security.email_address(body.email)
+    security.rate_limit("register-email:" + email, 2, 3600)
+    if body.website:
+        raise HTTPException(400, "invalid_input")
+    hashed = security.password_hash(body.password)
     with connect(True) as db:
         if not settings(db)["registration"] or not db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             raise HTTPException(403, "registration_closed")
@@ -277,6 +285,7 @@ def recover(body: Recovery, request: Request):
         raise HTTPException(400, "smtp_unavailable")
     prefs = settings()
     email = security.email_address(body.email)
+    security.rate_limit("recover-account:" + email, 3, 3600)
     with connect(True) as db:
         user = db.execute("""SELECT u.id, coalesce(p.name,'') AS name, coalesce(p.language,'pt-PT') AS language
                              FROM users u LEFT JOIN user_preferences p ON p.user_id=u.id
@@ -286,8 +295,9 @@ def recover(body: Recovery, request: Request):
             db.execute("DELETE FROM resets WHERE user_id=?", (user["id"],))
             db.execute("INSERT INTO resets VALUES (?,?,?)", (security.digest(token), user["id"], time.time() + 1800))
     if user:
-        link = prefs["smtp_public_url"].rstrip("/") + "/#reset/" + token
-        mail.send_recovery(user["name"], email, link, user["language"], prefs["installation_name"])
+        base = prefs["smtp_public_url"].rstrip("/") or str(request.base_url).rstrip("/")
+        mail.send_recovery(user["name"], email, base + "/#reset/" + token,
+                           user["language"], prefs["installation_name"])
     return {"ok": True}
 
 
@@ -534,6 +544,13 @@ class MailSettings(BaseModel):
     public_url: str = Field(default="", max_length=255)
 
 
+def validate_mail_settings(body: MailSettings):
+    if body.public_url and urlparse(body.public_url).scheme not in ("http", "https"):
+        raise HTTPException(400, "invalid_option")
+    if body.sender:
+        security.email_address(body.sender)
+
+
 @app.get("/api/admin/smtp")
 def admin_mail(user=Depends(security.admin)):
     return {"providers": mail.PROVIDERS, "settings": mail.configuration()}
@@ -541,10 +558,7 @@ def admin_mail(user=Depends(security.admin)):
 
 @app.put("/api/admin/smtp")
 def admin_mail_save(body: MailSettings, user=Depends(security.admin)):
-    if body.public_url and urlparse(body.public_url).scheme not in ("http", "https"):
-        raise HTTPException(400, "invalid_option")
-    if body.sender:
-        security.email_address(body.sender)
+    validate_mail_settings(body)
     values = {"smtp_provider": body.provider, "smtp_host": body.host.strip(), "smtp_port": body.port,
               "smtp_security": body.security, "smtp_user": body.user.strip(),
               "smtp_from": body.sender.strip().lower(), "smtp_public_url": body.public_url.strip().rstrip("/")}
@@ -560,18 +574,21 @@ def admin_mail_save(body: MailSettings, user=Depends(security.admin)):
 
 
 @app.post("/api/admin/smtp/test")
-def admin_mail_test(request: Request, user=Depends(security.admin)):
+def admin_mail_test(body: MailSettings, request: Request, user=Depends(security.admin)):
     security.rate_limit("smtptest:" + user["id"], 5, 300)
+    validate_mail_settings(body)
     prefs = settings()
-    if not mail.available():
+    host = body.host.strip()
+    sender = body.sender.strip().lower()
+    if not host or not sender:
         raise HTTPException(400, "smtp_unavailable")
     account = user_public(user)
-    message = mail.build(account["name"], user["email"], prefs["smtp_public_url"] or "http://everyday-tools.local",
+    message = mail.build(account["name"], user["email"], body.public_url.strip().rstrip("/") or
+                         prefs["smtp_public_url"] or "http://everyday-tools.local",
                          account["language"] or "pt-PT", prefs["installation_name"])
-    message["From"] = mail.formataddr((prefs["installation_name"], prefs["smtp_from"]))
+    message["From"] = mail.formataddr((prefs["installation_name"], sender))
     try:
-        mail.deliver(prefs["smtp_host"], int(prefs["smtp_port"] or 587), prefs["smtp_security"] or "starttls",
-                     prefs["smtp_user"] or "", prefs["smtp_password"] or "", message)
+        mail.deliver(host, body.port, body.security, body.user.strip(), body.password or prefs["smtp_password"] or "", message)
     except Exception:
         raise HTTPException(502, "smtp_failed") from None
     return {"ok": True}

@@ -98,13 +98,18 @@ function Application({
     [desired, setDesired] = useState("");
   const [profile, setProfile] = useState(false),
     [confirmDelete, setConfirmDelete] = useState<Job>(),
-    [preview, setPreview] = useState<{ job: Job; index: number }>(),
+    [preview, setPreview] = useState<{
+      job: Job;
+      index: number;
+      original?: boolean;
+    }>(),
     [matte, setMatte] = useState<{ job: Job; index: number }>();
   const input = useRef<HTMLInputElement>(null),
-    dialogRef = useRef<HTMLDivElement>(null);
+    dialogRef = useRef<HTMLDivElement>(null),
+    pulse = useRef<() => void>(() => {});
 
   async function refreshJobs() {
-    setJobs(await api<Job[]>("/jobs"));
+    pulse.current();
   }
   async function bootstrap() {
     setError("");
@@ -167,9 +172,16 @@ function Application({
       }
       if (!cancelled) timer = setTimeout(poll, delay);
     }
+    // Anything that changes a job asks for an immediate look instead of waiting
+    // for the next tick, so the list reacts the moment work starts or finishes.
+    pulse.current = () => {
+      clearTimeout(timer);
+      void poll();
+    };
     void poll();
     return () => {
       cancelled = true;
+      pulse.current = () => {};
       clearTimeout(timer);
     };
   }, [user]);
@@ -710,6 +722,9 @@ function Application({
                     <JobList
                       jobs={jobs.slice(0, 3)}
                       onPreview={(j, i) => setPreview({ job: j, index: i })}
+                      onPreviewOriginal={(j, i) =>
+                        setPreview({ job: j, index: i, original: true })
+                      }
                       onDelete={setConfirmDelete}
                       onOpen={(j) => {
                         setDesired("");
@@ -765,6 +780,9 @@ function Application({
                 <JobList
                   jobs={jobs}
                   onPreview={(j, i) => setPreview({ job: j, index: i })}
+                  onPreviewOriginal={(j, i) =>
+                    setPreview({ job: j, index: i, original: true })
+                  }
                   onDelete={setConfirmDelete}
                   onOpen={(j) => {
                     setDesired("");
@@ -861,6 +879,7 @@ function Application({
             <Preview
               job={jobs.find((j) => j.id === preview.job.id) ?? preview.job}
               index={preview.index}
+              original={preview.original}
               onClose={() => setPreview(undefined)}
               onEdit={(index) => {
                 setPreview(undefined);
@@ -943,12 +962,14 @@ function JobList({
   onOpen,
   onCancel,
   onPreview,
+  onPreviewOriginal,
 }: {
   jobs: Job[];
   onDelete: (j: Job) => void;
   onOpen: (j: Job) => void;
   onCancel: (j: Job) => void;
   onPreview: (j: Job, index: number) => void;
+  onPreviewOriginal: (j: Job, index: number) => void;
 }) {
   const t = useText(),
     copy = useToolCopy(),
@@ -1077,13 +1098,9 @@ function JobList({
               </button>
             )}
             {["FAILED", "CANCELLED"].includes(job.state) && (
-              <a
-                className="link"
-                href={`/api/jobs/${job.id}/original/0`}
-                download
-              >
-                {t("Descarregar original", "Download original")}
-              </a>
+              <button className="link" onClick={() => onPreviewOriginal(job, 0)}>
+                {t("Ver original", "View original")}
+              </button>
             )}
             <button
               className="icon-btn delete"

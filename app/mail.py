@@ -37,8 +37,10 @@ def configuration(db=None):
 
 
 def available(db=None):
+    """A server and a sender are all that sending needs; the address of the
+    installation only shapes the recovery link and falls back to the request."""
     values = configuration(db)
-    return bool(values["smtp_host"] and values["smtp_from"] and values["smtp_public_url"])
+    return bool(values["smtp_host"] and values["smtp_from"])
 
 
 def deliver(host, port, security, user, password, message):
