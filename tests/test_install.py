@@ -321,3 +321,9 @@ def test_mdns_unit_starts_on_boot_and_recovers():
     assert "Restart=always" in body
     assert "systemctl enable everyday-tools-mdns" in body
     assert "systemctl enable --now docker" in body, "containers must come back after a reboot"
+
+
+@pytest.mark.parametrize("script", ["install.sh", "update.sh", "backup.sh", "scripts/test-stack.sh"])
+def test_shell_scripts_use_unix_line_endings(script):
+    """A carriage return makes bash fail on the first function, so it is worth pinning."""
+    assert b"\r\n" not in (ROOT / script).read_bytes()

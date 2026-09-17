@@ -1,35 +1,78 @@
 # Everyday Tools
 
-**Your digital Swiss Army knife.**
+**O teu canivete suíço digital.**
 
-PDFs, documentos, imagens, vídeo, áudio e ferramentas do dia a dia numa aplicação que podes alojar no teu servidor. Interface em português de Portugal e inglês, contas individuais e processamento sem serviços de conversão externos.
+Converte PDFs, documentos, imagens, vídeo e áudio no teu próprio servidor. Os ficheiros
+nunca saem de casa, apagam-se sozinhos ao fim de uma hora e ninguém precisa de saber o
+que é um codec para os usar.
 
 Criado por [Dinis Mago](https://github.com/dinismagoptoficial). Código aberto sob a [licença MIT](LICENSE).
 
-[English](README.en.md) · [Operação e restauro](docs/operations.md) · [Segurança](SECURITY.md) · [Contribuir](CONTRIBUTING.md)
+[English](README.en.md) · [Operação](docs/operations.md) · [Segurança](SECURITY.md) · [Contribuir](CONTRIBUTING.md)
 
-## Instalação
+---
 
-Precisas de Docker Compose v2 e de um kernel Linux com Landlock. Recomendamos 4 GB de RAM e 10 GB de disco livre. Ubuntu 22.04+, Debian 12+, Linux Mint 21+ e LMDE 6+ são as bases previstas; Docker Desktop também funciona com um kernel compatível.
+## Instalar
 
-Na pasta do projeto:
+Num servidor ou PC com Ubuntu, Debian, Linux Mint ou LMDE, cola isto no terminal:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/dinismagoptoficial/everydaytools/main/install.sh | sudo bash
+```
+
+É tudo. O instalador trata do Docker, descarrega o projeto, arranca os serviços e no fim
+mostra-te o endereço:
+
+```text
+Everyday Tools está a funcionar.
+Endereço local:  http://everyday-tools.local
+Acesso por IP:   http://192.168.1.50
+```
+
+Abre esse endereço, cria a tua conta de administrador e já está. Não há palavras-passe
+predefinidas para trocar nem ficheiros de configuração para editar.
+
+Correr o comando outra vez atualiza a instalação sem tocar nas contas, nas definições
+nem nos ficheiros que estejam a ser processados.
+
+### O que o instalador faz por ti
+
+- Instala o Docker e o plugin Compose, se ainda não os tiveres
+- Junta a tua conta ao grupo `docker`, para não precisares de `sudo` a toda a hora
+- Instala em `/opt/everyday-tools` e arranca os serviços
+- Configura o Avahi para o endereço `everyday-tools.local` funcionar na tua rede
+- Volta a anunciar esse nome sozinho se o router mudar o IP
+- Confirma no fim que a aplicação responde
+
+FFmpeg, LibreOffice, OCR e o modelo de remoção de fundo ficam todos dentro dos
+containers. No teu sistema entram apenas o Docker, o Compose e o Avahi.
+
+### Preciso de quê
+
+| | |
+| --- | --- |
+| Sistema | Ubuntu 22.04+, Debian 12+, Linux Mint 21+, LMDE 6+ ou outro da mesma família |
+| Núcleo | Linux 5.13 ou posterior, para o isolamento dos conversores |
+| Memória | 4 GB recomendados. Com 2 GB usa o [perfil reduzido](#servidores-com-menos-recursos) |
+| Disco | 10 GB livres |
+| Arquitetura | amd64 ou arm64 |
+
+O primeiro arranque descarrega as dependências e o modelo de remoção de fundo, por isso
+precisa de Internet. A partir daí as conversões funcionam offline.
+
+### Instalar à mão
+
+Se preferires ver o que estás a correr antes de o correr, ou se usas outro sistema com
+Docker:
+
+```bash
+git clone https://github.com/dinismagoptoficial/everydaytools.git
+cd everydaytools
 cp .env.example .env
 docker compose up -d --build --wait
 ```
 
-Abre `http://IP-DO-SERVIDOR`. A primeira visita cria o administrador, define os limites e apresenta os termos, a política de privacidade e as responsabilidades de quem gere a instalação. Não existem credenciais predefinidas. Conclui esta etapa antes de dar acesso a outras pessoas.
-
-O primeiro arranque descarrega dependências e o modelo de remoção de fundo. Depois da instalação, as conversões funcionam sem Internet. Para mudar a porta, define `PORT=8080` em `.env`.
-
-Em Ubuntu, Debian e Linux Mint podes usar o instalador:
-
-```bash
-sudo bash install.sh
-```
-
-Prepara Docker, Compose e Avahi, instala em `/opt/everyday-tools` e mostra o endereço IP e `everyday-tools.local`. O nome `.local` depende do suporte mDNS da rede. Repetir a instalação preserva contas, definições e dados existentes. Os conversores ficam nos containers.
+Para mudar a porta, define `PORT=8080` no `.env` antes de arrancar.
 
 ## O que inclui
 
@@ -76,9 +119,10 @@ O administrador define o acesso, a retenção, os backups e os contactos de priv
 ## Manutenção
 
 ```bash
-bash backup.sh
-bash update.sh
-docker compose ps
+cd /opt/everyday-tools
+sudo bash backup.sh    # contas e definições, sem documentos
+sudo bash update.sh    # faz cópia, atualiza, reinicia e verifica
+docker compose ps      # estado dos serviços
 ```
 
 O backup inclui contas, preferências e configuração. Exclui documentos, tarefas e sessões. A atualização cria um backup, preserva a imagem anterior, reconstrói a aplicação e verifica os serviços. As instruções de HTTPS, SMTP e restauro estão em [docs/operations.md](docs/operations.md).

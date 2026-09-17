@@ -2,34 +2,70 @@
 
 **Your digital Swiss Army knife.**
 
-PDFs, documents, images, video, audio and everyday utilities in an application you can host on your own server. Portuguese and English interface, individual accounts and processing without external conversion services.
+Convert PDFs, documents, images, video and audio on your own server. Files never leave
+your network, they delete themselves after an hour, and nobody needs to know what a
+codec is to use them.
 
 Created by [Dinis Mago](https://github.com/dinismagoptoficial). Open source under the [MIT license](LICENSE).
 
-[Português](README.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[Portugues](README.md) - [Operations](docs/operations.md) - [Security](SECURITY.md) - [Contributing](CONTRIBUTING.md)
+
+---
 
 ## Install
 
-You need Docker Compose v2 and a Linux kernel with Landlock. We recommend 4 GB of RAM and 10 GB of free disk space. Installation families include Ubuntu 22.04+, Debian 12+, Linux Mint 21+ and LMDE 6+. Docker Desktop also works with a compatible kernel.
-
-From the project folder:
+On a server or PC running Ubuntu, Debian, Linux Mint or LMDE, paste this into a terminal:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/dinismagoptoficial/everydaytools/main/install.sh | sudo bash
+```
+
+That is the whole thing. The installer handles Docker, fetches the project, starts the
+services and prints the address when it is done. Open that address, create your
+administrator account and you are running. There are no default passwords to change and
+no configuration files to edit.
+
+Running the command again updates the installation without touching accounts, settings
+or files still being processed.
+
+### What the installer does for you
+
+- Installs Docker and the Compose plugin if you do not have them
+- Adds your account to the `docker` group so you are not typing `sudo` all day
+- Installs into `/opt/everyday-tools` and starts the services
+- Sets up Avahi so `everyday-tools.local` resolves on your network
+- Re-announces that name by itself if your router hands out a new address
+- Checks that the application answers before it finishes
+
+FFmpeg, LibreOffice, OCR and the background removal model all live inside the
+containers. Only Docker, Compose and Avahi are installed on your system.
+
+### What you need
+
+| | |
+| --- | --- |
+| System | Ubuntu 22.04+, Debian 12+, Linux Mint 21+, LMDE 6+ or another of the same family |
+| Kernel | Linux 5.13 or later, for converter isolation |
+| Memory | 4 GB recommended. With 2 GB use the reduced profile below |
+| Disk | 10 GB free |
+| Architecture | amd64 or arm64 |
+
+The first start downloads dependencies and the background removal model, so it needs
+internet. After that, conversions work offline.
+
+### Installing by hand
+
+If you would rather read what you are running first, or you are on another system with
+Docker:
+
+```bash
+git clone https://github.com/dinismagoptoficial/everydaytools.git
+cd everydaytools
 cp .env.example .env
 docker compose up -d --build --wait
 ```
 
-Open `http://SERVER-IP`. Initial setup creates the administrator, sets limits and presents the terms, privacy notice and operator responsibilities. There are no default credentials. Complete setup before giving other people access.
-
-The first build downloads dependencies and the background removal model. Conversion works offline after installation. Set `PORT=8080` in `.env` to use a different port.
-
-On Ubuntu, Debian and Linux Mint, you can use:
-
-```bash
-sudo bash install.sh
-```
-
-The installer prepares Docker, Compose and Avahi, installs into `/opt/everyday-tools` and displays the IP address and `everyday-tools.local`. The `.local` address requires mDNS support. Running the installer again preserves existing accounts, settings and data. Converters run inside the containers.
+To change the port, set `PORT=8080` in `.env` before starting.
 
 ## Tools
 

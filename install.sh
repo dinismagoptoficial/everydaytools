@@ -171,6 +171,8 @@ if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != root ]] && id -u "$SUDO_USER" >/d
 fi
 
 install_dir="${INSTALL_DIR:-/opt/everyday-tools}"
+: "${EVERYDAY_TOOLS_REPOSITORY:=https://github.com/dinismagoptoficial/everydaytools.git}"
+: "${EVERYDAY_TOOLS_BRANCH:=main}"
 if [[ "$install_dir" != /* || "$install_dir" == / ]]; then
   echo 'INSTALL_DIR deve ser um diretório absoluto dedicado.' >&2
   exit 1
@@ -181,11 +183,11 @@ if [[ -f "$source_dir/compose.yaml" ]]; then
   everyday_sync_project "$source_dir" "$install_dir"
 elif [[ -f "$install_dir/compose.yaml" ]]; then
   echo 'Instalação existente encontrada; dados e configuração preservados.'
-elif [[ -n "${EVERYDAY_TOOLS_REPOSITORY:-}" ]]; then
-  git clone --depth 1 -- "$EVERYDAY_TOOLS_REPOSITORY" "$install_dir"
 else
-  echo 'Executa este script na pasta do projeto ou define EVERYDAY_TOOLS_REPOSITORY com o URL do teu repositório.' >&2
-  exit 1
+  # Piped straight from the web: fetch the project before building it.
+  command -v git >/dev/null 2>&1 || apt-get install -y git
+  echo "A obter Everyday Tools de $EVERYDAY_TOOLS_REPOSITORY"
+  git clone --depth 1 --branch "$EVERYDAY_TOOLS_BRANCH" -- "$EVERYDAY_TOOLS_REPOSITORY" "$install_dir"
 fi
 cd "$install_dir"
 if [[ ! -f .env ]]; then cp .env.example .env; chmod 600 .env; fi
