@@ -323,6 +323,10 @@ const errors: Record<string, [string, string]> = {
     "A recuperação por e-mail não está configurada.",
     "Email password recovery is not configured.",
   ],
+  smtp_failed: [
+    "O servidor de e-mail recusou a ligação. Verifica o servidor, a porta e as credenciais.",
+    "The mail server refused the connection. Check the server, port and credentials.",
+  ],
   invalid_token: [
     "A ligação de recuperação expirou ou já foi utilizada.",
     "The recovery link expired or was already used.",

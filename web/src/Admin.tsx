@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import MailSettings from "./MailSettings";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { api, fileSize } from "./api";
 import { useError, useText } from "./i18n";
@@ -85,26 +86,29 @@ export default function Admin({ onSettings }: { onSettings: () => void }) {
       </div>
       <div className="section-heading">
         <div className="filter-tabs">
-          {["users", "jobs", "storage", "settings", "system"].map((k, i) => (
-            <button
-              key={k}
-              className={tab === k ? "selected" : ""}
-              onClick={() => {
-                setTab(k);
-                setSuccess(false);
-              }}
-            >
-              {
-                [
-                  t("Utilizadores", "Users"),
-                  t("Tarefas", "Jobs"),
-                  t("Armazenamento", "Storage"),
-                  t("Definições", "Settings"),
-                  t("Sistema", "System"),
-                ][i]
-              }
-            </button>
-          ))}
+          {["users", "jobs", "storage", "settings", "email", "system"].map(
+            (k, i) => (
+              <button
+                key={k}
+                className={tab === k ? "selected" : ""}
+                onClick={() => {
+                  setTab(k);
+                  setSuccess(false);
+                }}
+              >
+                {
+                  [
+                    t("Utilizadores", "Users"),
+                    t("Tarefas", "Jobs"),
+                    t("Armazenamento", "Storage"),
+                    t("Definições", "Settings"),
+                    t("E-mail", "Email"),
+                    t("Sistema", "System"),
+                  ][i]
+                }
+              </button>
+            ),
+          )}
         </div>
         <button
           className="icon-btn"
@@ -308,6 +312,7 @@ export default function Admin({ onSettings }: { onSettings: () => void }) {
               </dl>
             </>
           )}
+          {tab === "email" && <MailSettings />}
           {tab === "system" && (
             <>
               <dl className="system-list">

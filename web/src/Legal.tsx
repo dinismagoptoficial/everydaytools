@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { api } from "./api";
 import { LanguageContext, useError, useText } from "./i18n";
 
@@ -69,12 +70,49 @@ export default function Legal({
         <summary>{t("Software de terceiros", "Third-party software")}</summary>
         <pre>{data.third_party}</pre>
         <a href="/third-party-licenses.txt" target="_blank" rel="noreferrer">
-          {t('Licenças da interface', 'Frontend licenses')}
+          {t("Licenças da interface", "Frontend licenses")}
         </a>
       </details>
       <small>
         {t("Versão dos documentos:", "Document version:")} {data.version}
       </small>
+    </div>
+  );
+}
+
+export function LegalDialog({ onClose }: { onClose: () => void }) {
+  const t = useText();
+  useEffect(() => {
+    const close = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [onClose]);
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <section
+        className="modal legal-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="legal-title"
+      >
+        <header className="modal-head">
+          <h2 id="legal-title">
+            {t("Sobre, termos e privacidade", "About, terms and privacy")}
+          </h2>
+          <button
+            className="icon-btn"
+            onClick={onClose}
+            aria-label={t("Fechar", "Close")}
+            autoFocus
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <Legal />
+      </section>
     </div>
   );
 }

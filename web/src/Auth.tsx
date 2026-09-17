@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowRight, ArrowLeft, ShieldCheck } from "lucide-react";
 import { api, type Status } from "./api";
-import Legal from "./Legal";
+import Legal, { LegalDialog } from "./Legal";
 import { useError, useText } from "./i18n";
 
 export default function Auth({
@@ -117,14 +117,14 @@ export default function Auth({
         </div>
       </div>
       <div className="auth-form">
-        <div className="eyebrow">
-          {mode === "setup"
-            ? t(
-                `CONFIGURAÇÃO INICIAL · ${step} / 3`,
-                `INITIAL SETUP · ${step} / 3`,
-              )
-            : t("A TUA INSTALAÇÃO", "YOUR INSTALLATION")}
-        </div>
+        {mode === "setup" && (
+          <div className="eyebrow">
+            {t(
+              `CONFIGURAÇÃO INICIAL · ${step} / 3`,
+              `INITIAL SETUP · ${step} / 3`,
+            )}
+          </div>
+        )}
         <h1>
           {mode === "setup"
             ? t("Bem-vindo ao Everyday Tools", "Welcome to Everyday Tools")
@@ -288,56 +288,59 @@ export default function Auth({
             <ArrowRight size={17} />
           </button>
         </form>
-        {mode === "login" && (
+        {mode === "setup" ? (
+          step > 1 && (
+            <div className="auth-links">
+              <button className="link" onClick={() => setStep(step - 1)}>
+                <ArrowLeft size={16} />
+                {t("Voltar", "Back")}
+              </button>
+            </div>
+          )
+        ) : (
           <div className="auth-links">
-            {status.registration && (
-              <button
-                className="link"
-                onClick={() => {
-                  setMode("register");
-                  setError("");
-                }}
-              >
-                {t("Criar uma conta", "Create an account")}
-              </button>
-            )}
-            {status.smtp && (
-              <button className="link" onClick={() => setMode("recover")}>
-                {t("Esqueceste-te da palavra-passe?", "Forgot your password?")}
-              </button>
-            )}
-          </div>
-        )}
-        {mode !== "login" && mode !== "setup" && (
-          <button
-            className="link back"
-            onClick={() => {
-              setMode("login");
-              setError("");
-            }}
-          >
-            <ArrowLeft size={16} />
-            {t("Voltar ao início de sessão", "Back to sign in")}
-          </button>
-        )}
-        {mode === "setup" && step > 1 && (
-          <button className="link back" onClick={() => setStep(step - 1)}>
-            <ArrowLeft size={16} />
-            {t("Voltar", "Back")}
-          </button>
-        )}
-        {mode !== "setup" && (
-          <>
-            <button
-              className="link back"
-              onClick={() => setShowLegal(!showLegal)}
-              aria-expanded={showLegal}
-            >
+            <div className="auth-row">
+              {mode === "login" ? (
+                <>
+                  {status.registration && (
+                    <button
+                      className="link"
+                      onClick={() => {
+                        setMode("register");
+                        setError("");
+                      }}
+                    >
+                      {t("Criar uma conta", "Create an account")}
+                    </button>
+                  )}
+                  {status.smtp && (
+                    <button className="link" onClick={() => setMode("recover")}>
+                      {t(
+                        "Esqueceste-te da palavra-passe?",
+                        "Forgot your password?",
+                      )}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  className="link"
+                  onClick={() => {
+                    setMode("login");
+                    setError("");
+                  }}
+                >
+                  <ArrowLeft size={16} />
+                  {t("Voltar ao início de sessão", "Back to sign in")}
+                </button>
+              )}
+            </div>
+            <button className="link" onClick={() => setShowLegal(true)}>
               {t("Sobre, termos e privacidade", "About, terms and privacy")}
             </button>
-            {showLegal && <Legal />}
-          </>
+          </div>
         )}
+        {showLegal && <LegalDialog onClose={() => setShowLegal(false)} />}
       </div>
     </div>
   );

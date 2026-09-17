@@ -2,12 +2,8 @@ import asyncio
 import json
 import secrets
 import shutil
-import smtplib
-import ssl
 import time
-import os
 from contextlib import asynccontextmanager
-from email.message import EmailMessage
 from urllib.parse import urlparse
 from typing import Literal
 
@@ -18,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from . import __version__, config, security, storage, legal
+from . import __version__, config, legal, mail, security, storage
 from .catalog import ALLOWED, OPERATIONS, available, catalog
 from .db import connect, initialize, settings
 from .downloads import DownloadResponse
@@ -145,7 +141,7 @@ def status():
     prefs = settings()
     return {"setup": setup, "name": prefs["installation_name"], "registration": prefs["registration"],
             "retention_minutes": prefs["retention_minutes"], "max_upload_mb": prefs["max_upload_mb"],
-            "smtp": bool(os.getenv("SMTP_HOST") and os.getenv("PUBLIC_URL")), "version": __version__, "legal_version": legal.VERSION}
+            "smtp": mail.available(), "version": __version__, "legal_version": legal.VERSION}
 
 
 @app.get("/api/health")
@@ -277,30 +273,21 @@ class Recovery(BaseModel):
 @app.post("/api/recover")
 def recover(body: Recovery, request: Request):
     security.rate_limit("recover:" + security.ip(request), 3, 600)
-    if not os.getenv("SMTP_HOST") or not os.getenv("PUBLIC_URL"):
+    if not mail.available():
         raise HTTPException(400, "smtp_unavailable")
+    prefs = settings()
     email = security.email_address(body.email)
     with connect(True) as db:
-        user = db.execute("SELECT id FROM users WHERE email=? AND disabled=0", (email,)).fetchone()
+        user = db.execute("""SELECT u.id, coalesce(p.name,'') AS name, coalesce(p.language,'pt-PT') AS language
+                             FROM users u LEFT JOIN user_preferences p ON p.user_id=u.id
+                             WHERE u.email=? AND u.disabled=0""", (email,)).fetchone()
         if user:
             token = secrets.token_urlsafe(32)
-            db.execute("DELETE FROM resets WHERE user_id=?", (user[0],))
-            db.execute("INSERT INTO resets VALUES (?,?,?)", (security.digest(token), user[0], time.time() + 1800))
+            db.execute("DELETE FROM resets WHERE user_id=?", (user["id"],))
+            db.execute("INSERT INTO resets VALUES (?,?,?)", (security.digest(token), user["id"], time.time() + 1800))
     if user:
-        message = EmailMessage()
-        message["From"] = os.getenv("SMTP_FROM", "everyday-tools@localhost")
-        message["To"] = email
-        message["Subject"] = "Everyday Tools: password"
-        message.set_content("Alterar palavra-passe / Reset password (30 min):\n" + os.environ["PUBLIC_URL"].rstrip("/") + "/#reset/" + token)
-        try:
-            with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.getenv("SMTP_PORT", "587")), timeout=10) as smtp:
-                if os.getenv("SMTP_STARTTLS", "true") == "true":
-                    smtp.starttls(context=ssl.create_default_context())
-                if os.getenv("SMTP_USER"):
-                    smtp.login(os.environ["SMTP_USER"], os.environ["SMTP_PASSWORD"])
-                smtp.send_message(message)
-        except Exception:
-            print("password recovery delivery failed", flush=True)
+        link = prefs["smtp_public_url"].rstrip("/") + "/#reset/" + token
+        mail.send_recovery(user["name"], email, link, user["language"], prefs["installation_name"])
     return {"ok": True}
 
 
@@ -512,7 +499,8 @@ def admin_overview(user=Depends(security.admin)):
         job_rows = [dict(r) for r in db.execute("SELECT id,state,class,created FROM jobs WHERE expires>?", (time.time(),))]
         reserved = db.execute("SELECT coalesce(sum(reserved),0) FROM jobs").fetchone()[0]
     disk = shutil.disk_usage(config.JOBS)
-    return {"users": users, "jobs": job_rows, "settings": settings(),
+    exposed = {k: v for k, v in settings().items() if k != "smtp_password"}
+    return {"users": users, "jobs": job_rows, "settings": exposed,
             "storage": {"used": storage.used_space(), "free": disk.free, "reserved": reserved}, "system": health()}
 
 
@@ -521,6 +509,60 @@ def admin_settings(body: Preferences, user=Depends(security.admin)):
     with connect(True) as db:
         for key, value in body.model_dump().items():
             db.execute("UPDATE settings SET value=? WHERE key=?", (json.dumps(value), key))
+    return {"ok": True}
+
+
+class MailSettings(BaseModel):
+    provider: Literal[tuple(mail.PROVIDERS)] = "custom"
+    host: str = Field(default="", max_length=255)
+    port: int = Field(default=587, ge=1, le=65535)
+    security: Literal["starttls", "ssl", "none"] = "starttls"
+    user: str = Field(default="", max_length=255)
+    password: str = Field(default="", max_length=255)
+    sender: str = Field(default="", max_length=254)
+    public_url: str = Field(default="", max_length=255)
+
+
+@app.get("/api/admin/smtp")
+def admin_mail(user=Depends(security.admin)):
+    return {"providers": mail.PROVIDERS, "settings": mail.configuration()}
+
+
+@app.put("/api/admin/smtp")
+def admin_mail_save(body: MailSettings, user=Depends(security.admin)):
+    if body.public_url and urlparse(body.public_url).scheme not in ("http", "https"):
+        raise HTTPException(400, "invalid_option")
+    if body.sender:
+        security.email_address(body.sender)
+    values = {"smtp_provider": body.provider, "smtp_host": body.host.strip(), "smtp_port": body.port,
+              "smtp_security": body.security, "smtp_user": body.user.strip(),
+              "smtp_from": body.sender.strip().lower(), "smtp_public_url": body.public_url.strip().rstrip("/")}
+    with connect(True) as db:
+        for key, value in values.items():
+            db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, json.dumps(value)))
+        # An empty field keeps the stored password; it is never sent back to the browser.
+        if body.password:
+            db.execute("INSERT OR REPLACE INTO settings VALUES ('smtp_password',?)", (json.dumps(body.password),))
+        elif not body.host:
+            db.execute("INSERT OR REPLACE INTO settings VALUES ('smtp_password','\"\"')")
+    return {"ok": True}
+
+
+@app.post("/api/admin/smtp/test")
+def admin_mail_test(request: Request, user=Depends(security.admin)):
+    security.rate_limit("smtptest:" + user["id"], 5, 300)
+    prefs = settings()
+    if not mail.available():
+        raise HTTPException(400, "smtp_unavailable")
+    account = user_public(user)
+    message = mail.build(account["name"], user["email"], prefs["smtp_public_url"] or "http://everyday-tools.local",
+                         account["language"] or "pt-PT", prefs["installation_name"])
+    message["From"] = mail.formataddr((prefs["installation_name"], prefs["smtp_from"]))
+    try:
+        mail.deliver(prefs["smtp_host"], int(prefs["smtp_port"] or 587), prefs["smtp_security"] or "starttls",
+                     prefs["smtp_user"] or "", prefs["smtp_password"] or "", message)
+    except Exception:
+        raise HTTPException(502, "smtp_failed") from None
     return {"ok": True}
 
 

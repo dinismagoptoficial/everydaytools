@@ -1,3 +1,4 @@
+import json
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
@@ -191,3 +192,33 @@ def test_registration_is_refused_before_setup_exists(client):
     assert response.status_code == 403
     with connect() as db:
         assert not db.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+
+
+def test_smtp_password_is_never_returned(admin_client):
+    saved = admin_client.put("/api/admin/smtp", json={
+        "provider": "gmail", "host": "smtp.gmail.com", "port": 587, "security": "starttls",
+        "user": "someone@gmail.com", "password": "app-specific-secret", "sender": "someone@gmail.com",
+        "public_url": "https://tools.example.test"})
+    assert saved.status_code == 200, saved.text
+
+    settings_view = admin_client.get("/api/admin/smtp").json()["settings"]
+    assert settings_view["password_set"] is True
+    assert "app-specific-secret" not in json.dumps(settings_view)
+    assert "app-specific-secret" not in admin_client.get("/api/admin").text
+    assert "smtp_password" not in admin_client.get("/api/admin").json()["settings"]
+
+    # Saving again without the field keeps the stored password instead of clearing it.
+    admin_client.put("/api/admin/smtp", json={
+        "provider": "gmail", "host": "smtp.gmail.com", "port": 587, "security": "starttls",
+        "user": "someone@gmail.com", "password": "", "sender": "someone@gmail.com",
+        "public_url": "https://tools.example.test"})
+    assert admin_client.get("/api/admin/smtp").json()["settings"]["password_set"] is True
+    with connect() as db:
+        stored = db.execute("SELECT value FROM settings WHERE key='smtp_password'").fetchone()[0]
+    assert json.loads(stored) == "app-specific-secret"
+
+
+def test_recovery_needs_a_configured_sender(client):
+    authenticate(client)
+    assert client.post("/api/recover", json={"email": "admin@example.test"}).status_code == 400
+    assert client.get("/api/status").json()["smtp"] is False

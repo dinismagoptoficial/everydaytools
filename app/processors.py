@@ -108,17 +108,52 @@ def background_session():
     return ort.InferenceSession(str(model), sess_options=opts, providers=["CPUExecutionProvider"])
 
 
-def background(image):
+def saliency(rgb):
     import numpy as np
     session = background_session()
-    rgb = image.convert("RGB")
     data = np.asarray(rgb.resize((320, 320), Image.Resampling.LANCZOS), dtype=np.float32) / 255.0
     data = (data - np.array([0.485, 0.456, 0.406], dtype=np.float32)) / np.array([0.229, 0.224, 0.225], dtype=np.float32)
     result = session.run(None, {session.get_inputs()[0].name: data.transpose(2, 0, 1)[None]})[0][0, 0]
-    result = (result - result.min()) / max(float(result.max() - result.min()), 1e-8)
-    mask = Image.fromarray((result * 255).astype("uint8")).resize(image.size, Image.Resampling.LANCZOS)
+    return (result - result.min()) / max(float(result.max() - result.min()), 1e-8)
+
+
+def spread(prob, size):
+    import numpy as np
+    scaled = Image.fromarray((prob * 255).astype("uint8")).resize(size, Image.Resampling.BILINEAR)
+    return np.asarray(scaled, dtype=np.float32) / 255.0
+
+
+def subject_box(prob, rgb, grow=0.15):
+    """Where the subject sits in the full image, with room around it for context."""
+    import numpy as np
+    ys, xs = np.nonzero(prob > 0.5)
+    if len(xs) < 32:
+        return None
+    sx, sy = rgb.width / 320, rgb.height / 320
+    pad = grow * max(xs.max() - xs.min(), ys.max() - ys.min())
+    box = (max(0, int((xs.min() - pad) * sx)), max(0, int((ys.min() - pad) * sy)),
+           min(rgb.width, int((xs.max() + pad) * sx)), min(rgb.height, int((ys.max() + pad) * sy)))
+    width, height = box[2] - box[0], box[3] - box[1]
+    if width < 96 or height < 96 or width * height > 0.92 * rgb.width * rgb.height:
+        return None
+    return box
+
+
+def background(image):
+    """Alpha for the subject. A 320 grid over the whole frame loses thin detail, so the
+    subject is measured again on its own before the result is hardened into a matte."""
+    import numpy as np
+    rgb = image.convert("RGB")
+    coarse = saliency(rgb)
+    alpha = spread(coarse, image.size)
+    box = subject_box(coarse, rgb)
+    if box:
+        closer = spread(saliency(rgb.crop(box)), (box[2] - box[0], box[3] - box[1]))
+        alpha[box[1]:box[3], box[0]:box[2]] = np.maximum(alpha[box[1]:box[3], box[0]:box[2]], closer)
+    edge = np.clip((alpha - 0.05) / 0.40, 0, 1)
+    matte = edge * edge * (3 - 2 * edge)
     output = rgb.convert("RGBA")
-    output.putalpha(mask)
+    output.putalpha(Image.fromarray((matte * 255).astype("uint8")))
     return output
 
 
@@ -136,6 +171,13 @@ def image_jobs(paths, output, op, options):
         with open_image(path) as im:
             if op == "image_background":
                 im = background(im)
+                fill = str(options.get("background_colour", ""))
+                if fill:
+                    if not re.fullmatch(r"#[0-9a-fA-F]{6}", fill):
+                        raise ValueError("invalid_option")
+                    plate = Image.new("RGBA", im.size, fill)
+                    plate.alpha_composite(im)
+                    im = plate
             if op == "image_resize":
                 width = int(number(options, "width", 1920, 1, 12000))
                 height = int(number(options, "height", 1080, 1, 12000))

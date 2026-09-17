@@ -491,12 +491,49 @@ export default function Options({
               </p>
             )}
             {selected === "image_background" && (
-              <p className="notice">
-                {t(
-                  "O resultado será PNG com transparência. Contornos finos podem precisar de revisão.",
-                  "The result is a transparent PNG. Fine edges may need review.",
-                )}
-              </p>
+              <>
+                <fieldset className="swatches">
+                  <legend>
+                    {t("Fundo do resultado", "Result background")}
+                  </legend>
+                  {[
+                    ["", t("Transparente", "Transparent")],
+                    ["#ffffff", t("Branco", "White")],
+                    ["#000000", t("Preto", "Black")],
+                  ].map(([value, label]) => (
+                    <label key={label} className="swatch">
+                      <input
+                        type="radio"
+                        name="background_colour"
+                        checked={(options.background_colour ?? "") === value}
+                        onChange={() => update("background_colour", value)}
+                      />
+                      <span
+                        className={value ? "" : "checker"}
+                        style={value ? { background: value } : undefined}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                  <label className="swatch custom">
+                    <input
+                      type="color"
+                      value={options.background_colour || "#962a3b"}
+                      onChange={(e) =>
+                        update("background_colour", e.target.value)
+                      }
+                      aria-label={t("Outra cor", "Another colour")}
+                    />
+                    {t("Outra cor", "Another colour")}
+                  </label>
+                </fieldset>
+                <p className="notice">
+                  {t(
+                    "Sem cor escolhida o resultado é PNG com transparência. Contornos finos podem precisar de revisão.",
+                    "With no colour chosen the result is a transparent PNG. Fine edges may need review.",
+                  )}
+                </p>
+              </>
             )}
             <button className="primary wide" disabled={busy}>
               {busy

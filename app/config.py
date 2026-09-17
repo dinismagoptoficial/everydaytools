@@ -24,6 +24,14 @@ DEFAULTS = {
     "register_limit": int(os.getenv("REGISTER_RATE_LIMIT", "5")),
     "admin_limit": int(os.getenv("ADMIN_RATE_LIMIT", "30")),
     "job_limit": int(os.getenv("JOB_RATE_LIMIT", "20")),
+    "smtp_provider": os.getenv("SMTP_PROVIDER", ""),
+    "smtp_host": os.getenv("SMTP_HOST", ""),
+    "smtp_port": int(os.getenv("SMTP_PORT", "587")),
+    "smtp_security": os.getenv("SMTP_SECURITY", "starttls"),
+    "smtp_user": os.getenv("SMTP_USER", ""),
+    "smtp_password": os.getenv("SMTP_PASSWORD", ""),
+    "smtp_from": os.getenv("SMTP_FROM", ""),
+    "smtp_public_url": os.getenv("PUBLIC_URL", ""),
 }
 JOB_TIMEOUT = int(os.getenv("JOB_TIMEOUT_SECONDS", "900"))
 MAX_OUTPUT = int(os.getenv("MAX_OUTPUT_MB", "1024")) * 1024**2
