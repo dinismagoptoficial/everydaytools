@@ -298,6 +298,7 @@ def test_existing_text_is_covered_and_rewritten(admin_client, pdf_bytes):
     pages = PdfReader(folder / 'output' / 'edited.pdf').pages
     first = pages[0].extract_text() or ''
     assert 'Texto substituido' in first
+    assert 'Private text on first page' not in first
     assert 'Second page' in (pages[1].extract_text() or '')
 
 

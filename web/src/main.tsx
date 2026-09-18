@@ -54,6 +54,30 @@ const Account = lazy(() => import("./Account"));
 const Admin = lazy(() => import("./Admin"));
 const Preview = lazy(() => import("./Preview"));
 const MatteEditor = lazy(() => import("./MatteEditor"));
+const PREVIEWABLE_ORIGINALS = new Set([
+  "pdf",
+  "docx",
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "avif",
+  "gif",
+  "bmp",
+  "txt",
+  "csv",
+  "md",
+  "mp4",
+  "webm",
+  "mkv",
+  "mov",
+  "mp3",
+  "wav",
+  "ogg",
+  "m4a",
+  "aac",
+  "flac",
+]);
 
 function App() {
   const [lang, setLang] = useState<Language>(() =>
@@ -149,16 +173,29 @@ function Application({
     if (!user) return;
     let cancelled = false,
       timer: ReturnType<typeof setTimeout>;
+    let running = false;
+    let pending = false;
+    let lastHealth = 0;
     async function poll() {
+      if (running) {
+        pending = true;
+        return;
+      }
+      running = true;
       let delay = document.hidden ? 30000 : 15000;
       try {
-        const [list, health] = await Promise.all([
-          api<Job[]>("/jobs"),
-          api<{ worker: boolean }>("/health"),
-        ]);
+        const checkHealth = Date.now() - lastHealth >= 15000;
+        const listRequest = api<Job[]>("/jobs");
+        const healthRequest = checkHealth
+          ? api<{ worker: boolean }>("/health")
+          : Promise.resolve(undefined);
+        const [list, health] = await Promise.all([listRequest, healthRequest]);
         if (!cancelled) {
           setJobs(list);
-          setWorker(health.worker);
+          if (health) {
+            setWorker(health.worker);
+            lastHealth = Date.now();
+          }
         }
         if (
           !document.hidden &&
@@ -166,11 +203,19 @@ function Application({
             (j) => j.ready && ["PENDING", "PROCESSING"].includes(j.state),
           )
         )
-          delay = 2500;
+          delay = 1000;
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
+      } finally {
+        running = false;
       }
-      if (!cancelled) timer = setTimeout(poll, delay);
+      if (!cancelled) {
+        if (pending) {
+          pending = false;
+          delay = 0;
+        }
+        timer = setTimeout(poll, delay);
+      }
     }
     // Anything that changes a job asks for an immediate look instead of waiting
     // for the next tick, so the list reacts the moment work starts or finishes.
@@ -178,11 +223,18 @@ function Application({
       clearTimeout(timer);
       void poll();
     };
+    const wake = () => {
+      if (!document.hidden) pulse.current();
+    };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
     void poll();
     return () => {
       cancelled = true;
       pulse.current = () => {};
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
     };
   }, [user]);
   useEffect(() => {
@@ -368,7 +420,12 @@ function Application({
   if (!loaded)
     return (
       <div className="initial-loading">
-        <img src="/logo.png" alt="Everyday Tools" className="brand-mark" draggable={false} />
+        <img
+          src="/logo.png"
+          alt="Everyday Tools"
+          className="brand-mark"
+          draggable={false}
+        />
         <LoaderCircle className="spin" />
       </div>
     );
@@ -406,7 +463,12 @@ function Application({
         className={"sidebar " + (mobile ? "open" : "")}
       >
         <button className="brand" onClick={() => navigate("home")}>
-          <img src="/logo.png" alt="" className="brand-mark" draggable={false} />
+          <img
+            src="/logo.png"
+            alt=""
+            className="brand-mark"
+            draggable={false}
+          />
           <span>
             Everyday<span className="brand-second">Tools</span>
           </span>
@@ -1038,6 +1100,23 @@ function JobList({
             )}
           </div>
           <div className="job-actions">
+            {job.files.some((file) => PREVIEWABLE_ORIGINALS.has(file.ext)) &&
+              job.state !== "PROCESSING" && (
+                <button
+                  className="secondary compact"
+                  onClick={() =>
+                    onPreviewOriginal(
+                      job,
+                      job.files.findIndex((file) =>
+                        PREVIEWABLE_ORIGINALS.has(file.ext),
+                      ),
+                    )
+                  }
+                >
+                  <Eye size={15} />
+                  {t("Ver original", "View original")}
+                </button>
+              )}
             {job.state === "COMPLETED" && (
               <>
                 <button
@@ -1098,7 +1177,10 @@ function JobList({
               </button>
             )}
             {["FAILED", "CANCELLED"].includes(job.state) && (
-              <button className="link" onClick={() => onPreviewOriginal(job, 0)}>
+              <button
+                className="link"
+                onClick={() => onPreviewOriginal(job, 0)}
+              >
                 {t("Ver original", "View original")}
               </button>
             )}

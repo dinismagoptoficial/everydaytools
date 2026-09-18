@@ -77,7 +77,11 @@ export default function Options({
     </label>
   );
   return (
-    <div className="modal-backdrop">
+    <div
+      className={
+        "modal-backdrop " + (selected === "pdf_edit" ? "editor-backdrop" : "")
+      }
+    >
       <section
         className={"modal " + (selected === "pdf_edit" ? "editor-modal" : "")}
         role="dialog"

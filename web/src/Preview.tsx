@@ -117,10 +117,15 @@ export default function Preview({
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement ||
+        event.target instanceof HTMLSelectElement
+      )
+        return;
       if (event.key === "ArrowRight")
         setAt((value) => Math.min(shown.length - 1, value + 1));
-      if (event.key === "ArrowLeft")
-        setAt((value) => Math.max(0, value - 1));
+      if (event.key === "ArrowLeft") setAt((value) => Math.max(0, value - 1));
     };
     document.addEventListener("keydown", close);
     return () => document.removeEventListener("keydown", close);
@@ -155,10 +160,9 @@ export default function Preview({
         } else if (type === "pdf") {
           setPdf(new Uint8Array(buffer));
         } else if (type === "document") {
-          const [{ convertToHtml }, { default: DOMPurify }] = await Promise.all([
-            import("mammoth"),
-            import("dompurify"),
-          ]);
+          const [{ convertToHtml }, { default: DOMPurify }] = await Promise.all(
+            [import("mammoth"), import("dompurify")],
+          );
           if (cancelled) return;
           const result = await convertToHtml({ arrayBuffer: buffer });
           setDocumentHtml(
@@ -306,7 +310,10 @@ export default function Preview({
           {!original &&
             job.operation === "image_background" &&
             type === "image" && (
-              <button className="secondary" onClick={() => onEdit(output.index)}>
+              <button
+                className="secondary"
+                onClick={() => onEdit(output.index)}
+              >
                 <Brush size={16} />
                 {t("Ajustar máscara e fundo", "Adjust mask and background")}
               </button>

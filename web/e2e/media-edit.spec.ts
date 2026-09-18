@@ -64,6 +64,8 @@ test("preview, background image and manual mask editing", async ({ page }) => {
   await expect(
     editor.getByRole("button", { name: "Trocar imagem" }),
   ).toBeVisible();
+  await expect(editor.getByLabel("Opacidade")).toBeVisible();
+  await expect(editor.getByLabel("Escurecer")).toBeVisible();
   expect(
     (await new AxeBuilder({ page }).include(".matte-modal").analyze())
       .violations,
@@ -90,6 +92,49 @@ test("preview, background image and manual mask editing", async ({ page }) => {
   await canvas.click({
     position: { x: bounds!.width / 2, y: bounds!.height / 2 },
   });
+
+  await editor.getByRole("button", { name: "Transparente" }).click();
+  await editor.getByLabel("Tamanho do pincel").fill("5");
+  await editor.getByLabel("Precisão do pincel").fill("100");
+  await editor.getByRole("button", { name: "Aproximar" }).click();
+  await expect(editor.getByText("150%", { exact: true })).toBeVisible();
+  const zoomed = await canvas.boundingBox();
+  expect(zoomed).not.toBeNull();
+  const target = { x: zoomed!.width * 0.46, y: zoomed!.height * 0.48 };
+  const control = { x: zoomed!.width * 0.54, y: zoomed!.height * 0.48 };
+  await editor.getByRole("button", { name: "Recuperar" }).click();
+  await canvas.click({ position: target });
+  await canvas.click({ position: control });
+  await editor.getByRole("button", { name: "Remover" }).click();
+  await canvas.click({ position: target });
+  const pixels = await canvas.evaluate(
+    (node, points) => {
+      const canvas = node as HTMLCanvasElement;
+      const box = canvas.getBoundingClientRect();
+      const context = canvas.getContext("2d", { willReadFrequently: true })!;
+      const alpha = (point: { x: number; y: number }, radius = 0) => {
+        const x = Math.round((point.x / box.width) * canvas.width);
+        const y = Math.round((point.y / box.height) * canvas.height);
+        const side = radius * 2 + 1;
+        const values = context.getImageData(
+          x - radius,
+          y - radius,
+          side,
+          side,
+        ).data;
+        const samples = [];
+        for (let at = 3; at < values.length; at += 4) samples.push(values[at]);
+        return Math.min(...samples);
+      };
+      return {
+        target: alpha(points.target, 2),
+        control: alpha(points.control),
+      };
+    },
+    { target, control },
+  );
+  expect(pixels.target).toBeLessThan(32);
+  expect(pixels.control).toBeGreaterThan(200);
 
   await page.screenshot({
     path: "test-results/mask-editor-desktop.png",

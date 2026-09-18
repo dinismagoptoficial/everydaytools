@@ -261,14 +261,20 @@ def edit_pdf(reader, path, output, options):
         page.mediabox.lower_left = page.cropbox.lower_left = (0, 0)
         page.mediabox.upper_right = page.cropbox.upper_right = (width, height)
         items = [a for a in annotations if a.get("page") == idx + 1]
-        redactions = [a for a in items if a.get("type") == "redact"]
-        if redactions:
-            # Rebuild the entire affected page from pixels; no hidden text/objects from that page survive.
+        flattened = [a for a in items if a.get("type") in {"redact", "replace"}]
+        if flattened:
+            # Rebuild edited pages from pixels. Replaced words and pictures are
+            # removed from the page data instead of merely being hidden below an overlay.
             im = render_page(path, idx, str(options.get("password", "")), scale=2)
             draw = ImageDraw.Draw(im)
-            for a in redactions:
+            for a in flattened:
                 x, y, w, h = annotation_rect(a, im.width, im.height)
-                draw.rectangle((math.floor(x), math.floor(y), math.ceil(x+w), math.ceil(y+h)), fill="black")
+                fill = "black"
+                if a.get("type") == "replace":
+                    fill = a.get("background", "#ffffff")
+                    if not isinstance(fill, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", fill):
+                        raise ValueError("invalid_option")
+                draw.rectangle((math.floor(x), math.floor(y), math.ceil(x+w), math.ceil(y+h)), fill=fill)
             buf = io.BytesIO()
             pdf = canvas.Canvas(buf, pagesize=(width, height))
             pdf.drawImage(ImageReader(im), 0, 0, width, height)

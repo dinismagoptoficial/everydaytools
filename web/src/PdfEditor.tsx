@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import {
   ChevronLeft,
   ChevronRight,
@@ -48,6 +48,9 @@ type Mark = {
   data?: string;
   points?: number[][];
   background?: string;
+  action?: string;
+  sourceRun?: Run;
+  sourcePicture?: PageImage;
 };
 export default function PdfEditor({
   jobId,
@@ -96,6 +99,13 @@ export default function PdfEditor({
     py: number;
   } | null>(null);
   const swapPicture = useRef(-1);
+  const actionCount = useRef(0);
+  const hiddenRuns = useRef<Record<number, Set<string>>>({});
+  const hiddenPictures = useRef<Record<number, Set<string>>>({});
+  const runKey = (run: Run) =>
+    [run.x, run.y, run.w, run.h, run.text].map(String).join(":");
+  const pictureKey = (pic: PageImage) =>
+    [pic.x, pic.y, pic.w, pic.h].map((value) => value.toFixed(3)).join(":");
   useEffect(() => {
     let disposed = false;
     let loaded: PDFDocumentProxy | undefined;
@@ -184,15 +194,21 @@ export default function PdfEditor({
               size,
             });
           }
-          setRuns(found);
+          setRuns(
+            found.filter((run) => !hiddenRuns.current[page]?.has(runKey(run))),
+          );
           const bitmaps = await pageImages(p, original.height);
           if (disposed) return;
           // A bitmap covering the whole sheet is a scan: lifting it would only
           // get in the way of the text and marks drawn on top of it.
           setPictures(
-            bitmaps.filter(
-              (b) => b.w * b.h < original.width * original.height * 0.92,
-            ),
+            bitmaps
+              .filter(
+                (b) => b.w * b.h < original.width * original.height * 0.92,
+              )
+              .filter(
+                (pic) => !hiddenPictures.current[page]?.has(pictureKey(pic)),
+              ),
           );
         } catch {
           /* Cancelled when changing pages. */
@@ -262,7 +278,83 @@ export default function PdfEditor({
     return "#" + best.map((v) => v.toString(16).padStart(2, "0")).join("");
   }
 
+  function ink(run: Run) {
+    const target = canvas.current;
+    if (!target) return "#111114";
+    const context = target.getContext("2d", { willReadFrequently: true });
+    if (!context) return "#111114";
+    const sx = target.width / dimensions.w;
+    const sy = target.height / dimensions.h;
+    const left = Math.round(Math.max(run.x, 0) * sx);
+    const top = Math.round(Math.max(run.y, 0) * sy);
+    const width = Math.max(
+      1,
+      Math.min(Math.round(run.w * sx), target.width - left),
+    );
+    const height = Math.max(
+      1,
+      Math.min(Math.round(run.h * sy), target.height - top),
+    );
+    const data = context.getImageData(left, top, width, height).data;
+    let best = [17, 17, 20];
+    let darkest = 3 * 255;
+    for (let at = 0; at < data.length; at += 4) {
+      const total = data[at] + data[at + 1] + data[at + 2];
+      if (total < darkest) {
+        darkest = total;
+        best = [data[at], data[at + 1], data[at + 2]];
+      }
+    }
+    return "#" + best.map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  /**
+   * Lifts a run off the page: the original words are covered and the same
+   * words come back as an object that can be dragged, stretched or retyped.
+   */
+  function liftRun(run: Run, words: string | null) {
+    const action = String(++actionCount.current);
+    const box = {
+      x: run.x / dimensions.w,
+      y: run.y / dimensions.h,
+      w: run.w / dimensions.w,
+      h: run.h / dimensions.h,
+    };
+    const added: Mark[] = [
+      {
+        page,
+        ...box,
+        type: "replace",
+        text: "",
+        size: 10,
+        color: "#111114",
+        background: behind(run),
+        action,
+        sourceRun: run,
+      },
+    ];
+    if (words !== null)
+      added.push({
+        page,
+        ...box,
+        type: "text",
+        text: words,
+        size: run.size,
+        color: ink(run),
+        action,
+      });
+    (hiddenRuns.current[page] ??= new Set()).add(runKey(run));
+    setMarks((previous) => {
+      setSelected(words !== null ? previous.length + 1 : -1);
+      return [...previous, ...added];
+    });
+    setRuns((previous) => previous.filter((item) => item !== run));
+    setEditing(undefined);
+  }
+
   function replaceRun(run: Run, value: string) {
+    const action = String(++actionCount.current);
+    (hiddenRuns.current[page] ??= new Set()).add(runKey(run));
     setMarks((previous) => [
       ...previous,
       {
@@ -274,10 +366,13 @@ export default function PdfEditor({
         h: run.h / dimensions.h,
         text: value,
         size: run.size,
-        color: "#111114",
+        color: ink(run),
         background: behind(run),
+        action,
+        sourceRun: run,
       },
     ]);
+    setRuns((previous) => previous.filter((item) => item !== run));
     setEditing(undefined);
   }
 
@@ -314,6 +409,7 @@ export default function PdfEditor({
   function liftPicture(at: number, data: string | null) {
     const pic = pictures[at];
     if (!pic) return;
+    const action = String(++actionCount.current);
     const box = {
       x: pic.x / dimensions.w,
       y: pic.y / dimensions.h,
@@ -329,6 +425,8 @@ export default function PdfEditor({
         size: 10,
         color: "#111114",
         background: behind(pic),
+        action,
+        sourcePicture: pic,
       },
     ];
     if (data)
@@ -340,7 +438,9 @@ export default function PdfEditor({
         size: 12,
         color,
         data,
+        action,
       });
+    (hiddenPictures.current[page] ??= new Set()).add(pictureKey(pic));
     setMarks((previous) => {
       setSelected(data ? previous.length + 1 : -1);
       return [...previous, ...added];
@@ -484,6 +584,34 @@ export default function PdfEditor({
       setCurrent(undefined);
     }
   }
+  function undoLast() {
+    setMarks((current) => {
+      const last = current.at(-1);
+      if (!last) return current;
+      const removed = last.action
+        ? current.filter((mark) => mark.action === last.action)
+        : [last];
+      const source = removed.find(
+        (mark) => mark.sourceRun || mark.sourcePicture,
+      );
+      if (source?.sourceRun) {
+        hiddenRuns.current[source.page]?.delete(runKey(source.sourceRun));
+        if (source.page === page)
+          setRuns((items) => [...items, source.sourceRun!]);
+      }
+      if (source?.sourcePicture) {
+        hiddenPictures.current[source.page]?.delete(
+          pictureKey(source.sourcePicture),
+        );
+        if (source.page === page)
+          setPictures((items) => [...items, source.sourcePicture!]);
+      }
+      return last.action
+        ? current.filter((mark) => mark.action !== last.action)
+        : current.slice(0, -1);
+    });
+    setSelected(-1);
+  }
   function movePage(direction: number) {
     const idx = order.indexOf(page),
       target = idx + direction;
@@ -548,6 +676,20 @@ export default function PdfEditor({
           <div className="actions">
             <button
               className="secondary compact"
+              onClick={() => liftRun(editing.run, null)}
+            >
+              <Trash2 size={14} />
+              {t("Apagar", "Delete")}
+            </button>
+            <button
+              className="secondary compact"
+              onClick={() => liftRun(editing.run, editing.draft)}
+            >
+              <Move size={14} />
+              {t("Mover ou esticar", "Move or stretch")}
+            </button>
+            <button
+              className="secondary compact"
               onClick={() => setEditing(undefined)}
             >
               {t("Cancelar", "Cancel")}
@@ -556,13 +698,13 @@ export default function PdfEditor({
               className="primary compact"
               onClick={() => replaceRun(editing.run, editing.draft)}
             >
-              {t("Substituir", "Replace")}
+              {t("Trocar aqui", "Replace here")}
             </button>
           </div>
           <small>
             {t(
-              "O texto original é tapado com a cor da página e o novo é desenhado por cima. O tipo de letra pode não ser exatamente igual.",
-              "The original run is covered with the page colour and the new words are drawn on top. The typeface may not match exactly.",
+              "“Trocar aqui” deixa as palavras no sítio; “Mover ou esticar” solta-as para as arrastares para onde quiseres. Em ambos os casos o texto original fica tapado com a cor da página, e o tipo de letra pode não ser exatamente igual.",
+              "“Replace here” keeps the words in place; “Move or stretch” frees them so you can drag them anywhere. Either way the original run is covered with the page colour, and the typeface may not match exactly.",
             )}
           </small>
         </div>
@@ -637,7 +779,7 @@ export default function PdfEditor({
         <button
           className="editor-tool"
           disabled={!marks.length}
-          onClick={() => setMarks((m) => m.slice(0, -1))}
+          onClick={undoLast}
         >
           <Undo2 size={17} />
           {t("Desfazer", "Undo")}
@@ -757,7 +899,7 @@ export default function PdfEditor({
               onDrop={(event) => event.preventDefault()}
               onClick={() => setPage(n)}
             >
-              <FilePage n={n} />
+              <FilePage doc={doc} n={n} />
               <small>
                 {i + 1}
                 {rotations[String(n)] ? ` · ${rotations[String(n)]}°` : ""}
@@ -927,7 +1069,7 @@ export default function PdfEditor({
                 );
               })}
               {marks.map((m, index) => {
-                if (m.page !== page) return null;
+                if (m.page !== page || m.type === "replace") return null;
                 const x = m.x * dimensions.w,
                   y = m.y * dimensions.h;
                 const w = Math.max(m.w * dimensions.w, m.size || 12);
@@ -1158,7 +1300,9 @@ export default function PdfEditor({
           disabled={busy}
           onClick={() =>
             onSave({
-              annotations: marks,
+              annotations: marks.map(
+                ({ action, sourceRun, sourcePicture, ...mark }) => mark,
+              ),
               pages: order.join(","),
               rotations,
               password,
@@ -1172,13 +1316,45 @@ export default function PdfEditor({
     </div>
   );
 }
-function FilePage({ n }: { n: number }) {
+function FilePage({ doc, n }: { doc: PDFDocumentProxy; n: number }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const target = canvas.current;
+    if (!target) return;
+    let disposed = false;
+    let render: ReturnType<PDFPageProxy["render"]> | undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        observer.disconnect();
+        void doc
+          .getPage(n)
+          .then((page) => {
+            if (disposed || !canvas.current) return;
+            const base = page.getViewport({ scale: 1 });
+            const viewport = page.getViewport({
+              scale: Math.min(0.22, 54 / base.width),
+            });
+            canvas.current.width = viewport.width;
+            canvas.current.height = viewport.height;
+            render = page.render({ canvas: canvas.current, viewport });
+            return render.promise;
+          })
+          .catch(() => {});
+      },
+      { rootMargin: "120px" },
+    );
+    observer.observe(target);
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      render?.cancel();
+    };
+  }, [doc, n]);
   return (
     <span className="page-miniature">
+      <canvas ref={canvas} aria-hidden="true" />
       <span>{n}</span>
-      <i />
-      <i />
-      <i />
     </span>
   );
 }
