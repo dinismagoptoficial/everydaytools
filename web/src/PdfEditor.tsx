@@ -16,10 +16,21 @@ import {
   Trash2,
   Save,
   EyeOff,
+  TextCursorInput,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { loadPdf } from "./pdf";
 import { useText } from "./i18n";
 
+type Run = {
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  size: number;
+};
 type Mark = {
   page: number;
   type: string;
@@ -32,6 +43,7 @@ type Mark = {
   color: string;
   data?: string;
   points?: number[][];
+  background?: string;
 };
 export default function PdfEditor({
   jobId,
@@ -62,6 +74,12 @@ export default function PdfEditor({
     [dimensions, setDimensions] = useState({ w: 600, h: 800 }),
     [image, setImage] = useState("");
   const [rendering, setRendering] = useState(true);
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [editing, setEditing] = useState<{ run: Run; draft: string }>();
+  const [selected, setSelected] = useState(-1);
+  const [dragPage, setDragPage] = useState<number | null>(null);
+  const [wide, setWide] = useState(true);
+  const grab = useRef<{ index: number; x: number; y: number } | null>(null);
   useEffect(() => {
     let disposed = false;
     let loaded: PDFDocumentProxy | undefined;
@@ -124,7 +142,30 @@ export default function PdfEditor({
         task = render;
         try {
           await render.promise;
-          if (!disposed) setRendering(false);
+          if (disposed) return;
+          setRendering(false);
+          const content = await p.getTextContent();
+          if (disposed) return;
+          const found: Run[] = [];
+          for (const item of content.items) {
+            const run = item as {
+              str: string;
+              transform: number[];
+              width: number;
+              height: number;
+            };
+            if (!run.str || !run.str.trim()) continue;
+            const size = Math.abs(run.transform[3]) || run.height || 10;
+            found.push({
+              text: run.str,
+              x: run.transform[4],
+              y: original.height - run.transform[5] - size,
+              w: run.width || run.str.length * size * 0.5,
+              h: size * 1.25,
+              size,
+            });
+          }
+          setRuns(found);
         } catch {
           /* Cancelled when changing pages. */
         }
@@ -143,6 +184,7 @@ export default function PdfEditor({
     };
   }, [doc, page]);
   const modes = [
+    ["edit", TextCursorInput, t("Editar texto", "Edit text")],
     ["text", Type, t("Texto", "Text")],
     ["signature", PenLine, t("Assinatura", "Signature")],
     ["draw", PenLine, t("Desenhar", "Draw")],
@@ -152,6 +194,51 @@ export default function PdfEditor({
     ["redact", EyeOff, t("Ocultar", "Redact")],
     ["image", ImagePlus, t("Imagem", "Image")],
   ] as const;
+  function behind(run: Run) {
+    const target = canvas.current;
+    if (!target) return "#ffffff";
+    const context = target.getContext("2d", { willReadFrequently: true });
+    if (!context) return "#ffffff";
+    const sx = target.width / dimensions.w;
+    const sy = target.height / dimensions.h;
+    const samples: number[][] = [];
+    for (const [ox, oy] of [
+      [run.x - 3, run.y + run.h / 2],
+      [run.x + run.w + 3, run.y + run.h / 2],
+      [run.x + run.w / 2, run.y - 3],
+      [run.x + run.w / 2, run.y + run.h + 3],
+    ]) {
+      const px = Math.round(Math.min(Math.max(ox, 0), dimensions.w - 1) * sx);
+      const py = Math.round(Math.min(Math.max(oy, 0), dimensions.h - 1) * sy);
+      const data = context.getImageData(px, py, 1, 1).data;
+      samples.push([data[0], data[1], data[2]]);
+    }
+    // The lightest neighbour is the page, not a glyph edge or a neighbouring word.
+    const best = samples.reduce((a, b) =>
+      a[0] + a[1] + a[2] >= b[0] + b[1] + b[2] ? a : b,
+    );
+    return "#" + best.map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  function replaceRun(run: Run, value: string) {
+    setMarks((previous) => [
+      ...previous,
+      {
+        page,
+        type: "replace",
+        x: run.x / dimensions.w,
+        y: run.y / dimensions.h,
+        w: run.w / dimensions.w,
+        h: run.h / dimensions.h,
+        text: value,
+        size: run.size,
+        color: "#111114",
+        background: behind(run),
+      },
+    ]);
+    setEditing(undefined);
+  }
+
   function point(e: React.PointerEvent) {
     const r = area.current!.getBoundingClientRect();
     return [
@@ -254,7 +341,51 @@ export default function PdfEditor({
       </div>
     );
   return (
-    <div className="pdf-editor">
+    <div className={"pdf-editor " + (wide ? "wide" : "")}>
+      {editing && (
+        <div
+          className="run-editor"
+          role="dialog"
+          aria-label={t("Editar texto", "Edit text")}
+        >
+          <label>
+            {t("Substituir este texto", "Replace this text")}
+            <input
+              autoFocus
+              value={editing.draft}
+              maxLength={1000}
+              onChange={(event) =>
+                setEditing({ ...editing, draft: event.target.value })
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter")
+                  replaceRun(editing.run, editing.draft);
+                if (event.key === "Escape") setEditing(undefined);
+              }}
+            />
+          </label>
+          <div className="actions">
+            <button
+              className="secondary compact"
+              onClick={() => setEditing(undefined)}
+            >
+              {t("Cancelar", "Cancel")}
+            </button>
+            <button
+              className="primary compact"
+              onClick={() => replaceRun(editing.run, editing.draft)}
+            >
+              {t("Substituir", "Replace")}
+            </button>
+          </div>
+          <small>
+            {t(
+              "O texto original é tapado com a cor da página e o novo é desenhado por cima. O tipo de letra pode não ser exatamente igual.",
+              "The original run is covered with the page colour and the new words are drawn on top. The typeface may not match exactly.",
+            )}
+          </small>
+        </div>
+      )}
       <div
         className="editor-tools"
         role="toolbar"
@@ -274,6 +405,14 @@ export default function PdfEditor({
             <span>{label}</span>
           </button>
         ))}
+        <button
+          className="editor-tool"
+          onClick={() => setWide((value) => !value)}
+          aria-pressed={wide}
+        >
+          {wide ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          {wide ? t("Reduzir", "Shrink") : t("Ecrã inteiro", "Fullscreen")}
+        </button>
         <button
           className="editor-tool"
           disabled={!marks.length}
@@ -358,10 +497,29 @@ export default function PdfEditor({
       <div className="editor-workspace">
         <aside className="page-list">
           <strong>{t("Páginas", "Pages")}</strong>
+          <small className="page-hint">
+            {t("Arrasta para reordenar", "Drag to reorder")}
+          </small>
           {order.map((n, i) => (
             <button
               key={n}
-              className={page === n ? "selected" : ""}
+              className={
+                (page === n ? "selected " : "") +
+                (dragPage === n ? "dragging" : "")
+              }
+              draggable
+              onDragStart={() => setDragPage(n)}
+              onDragEnd={() => setDragPage(null)}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (dragPage === null || dragPage === n) return;
+                setOrder((current) => {
+                  const next = current.filter((value) => value !== dragPage);
+                  next.splice(next.indexOf(n), 0, dragPage);
+                  return next;
+                });
+              }}
+              onDrop={(event) => event.preventDefault()}
               onClick={() => setPage(n)}
             >
               <FilePage n={n} />
@@ -383,6 +541,28 @@ export default function PdfEditor({
             onPointerCancel={() => setCurrent(undefined)}
           >
             <canvas ref={canvas} />
+            {mode === "edit" && !rendering && (
+              <div className="text-layer">
+                {runs.map((run, index) => (
+                  <button
+                    key={index}
+                    className="text-run"
+                    title={run.text}
+                    style={{
+                      left: (run.x / dimensions.w) * 100 + "%",
+                      top: (run.y / dimensions.h) * 100 + "%",
+                      width: (run.w / dimensions.w) * 100 + "%",
+                      height: (run.h / dimensions.h) * 100 + "%",
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setEditing({ run, draft: run.text });
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             <svg
               className="annotation-layer"
               viewBox={`0 0 ${dimensions.w} ${dimensions.h}`}
@@ -392,6 +572,27 @@ export default function PdfEditor({
                   y = m.y * dimensions.h,
                   w = m.w * dimensions.w,
                   h = m.h * dimensions.h;
+                if (m.type === "replace")
+                  return (
+                    <g key={i}>
+                      <rect
+                        x={x}
+                        y={y}
+                        width={w}
+                        height={h}
+                        fill={m.background}
+                      />
+                      <text
+                        x={x}
+                        y={y + h - m.size * 0.25}
+                        fill={m.color}
+                        fontFamily="Helvetica, Arial, sans-serif"
+                        fontSize={m.size}
+                      >
+                        {m.text}
+                      </text>
+                    </g>
+                  );
                 if (m.type === "text" || m.type === "signature")
                   return (
                     <text
@@ -462,6 +663,61 @@ export default function PdfEditor({
                   />
                 );
               })}
+              {marks.map((m, index) => {
+                if (m.page !== page) return null;
+                const x = m.x * dimensions.w,
+                  y = m.y * dimensions.h;
+                const w = Math.max(m.w * dimensions.w, m.size || 12);
+                const h = Math.max(m.h * dimensions.h, (m.size || 12) * 1.2);
+                return (
+                  <rect
+                    key={"hit" + index}
+                    className={
+                      "mark-hit " + (selected === index ? "selected" : "")
+                    }
+                    x={x}
+                    y={y}
+                    width={w}
+                    height={h}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      setSelected(index);
+                      const box = area.current!.getBoundingClientRect();
+                      grab.current = {
+                        index,
+                        x: (event.clientX - box.left) / box.width - m.x,
+                        y: (event.clientY - box.top) / box.height - m.y,
+                      };
+                      (event.target as Element).setPointerCapture(
+                        event.pointerId,
+                      );
+                    }}
+                    onPointerMove={(event) => {
+                      const held = grab.current;
+                      if (!held) return;
+                      const box = area.current!.getBoundingClientRect();
+                      const nx =
+                        (event.clientX - box.left) / box.width - held.x;
+                      const ny =
+                        (event.clientY - box.top) / box.height - held.y;
+                      setMarks((list) =>
+                        list.map((item, at) =>
+                          at === held.index
+                            ? {
+                                ...item,
+                                x: Math.min(Math.max(nx, 0), 1),
+                                y: Math.min(Math.max(ny, 0), 1),
+                              }
+                            : item,
+                        ),
+                      );
+                    }}
+                    onPointerUp={() => {
+                      grab.current = null;
+                    }}
+                  />
+                );
+              })}
             </svg>
             {rendering && (
               <div className="rendering">
@@ -471,6 +727,24 @@ export default function PdfEditor({
           </div>
         </div>
       </div>
+      {selected >= 0 && marks[selected] && (
+        <div className="selection-bar">
+          <span>{t("Objeto selecionado", "Object selected")}</span>
+          <button
+            className="link"
+            onClick={() => {
+              setMarks((list) => list.filter((_, at) => at !== selected));
+              setSelected(-1);
+            }}
+          >
+            <Trash2 size={15} />
+            {t("Remover", "Remove")}
+          </button>
+          <button className="link" onClick={() => setSelected(-1)}>
+            {t("Desmarcar", "Deselect")}
+          </button>
+        </div>
+      )}
       <div className="editor-page-actions">
         <button
           className="icon-btn"

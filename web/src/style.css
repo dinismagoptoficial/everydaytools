@@ -2997,3 +2997,128 @@ footer a {
     padding-bottom: 18px;
   }
 }
+
+.pdf-editor.wide .editor-workspace {
+  height: min(72vh, 900px);
+}
+.editor-modal:has(.pdf-editor.wide) {
+  width: min(1500px, 98vw);
+  max-width: none;
+}
+.page-hint {
+  display: block;
+  font-size: 9px;
+  color: #9a9aa1;
+  margin: -4px 0 10px;
+  line-height: 1.4;
+}
+.page-list > button {
+  cursor: grab;
+  transition:
+    background 0.14s ease,
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.page-list > button:active {
+  cursor: grabbing;
+}
+.page-list > button.dragging {
+  opacity: 0.45;
+  transform: scale(0.96);
+}
+.text-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  /* Only the word boxes are clickable; the gaps between them belong to the page. */
+  pointer-events: none;
+}
+.text-run {
+  position: absolute;
+  pointer-events: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.text-run:hover {
+  background: #962a3b1f;
+  border-color: #962a3b66;
+}
+.text-run:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.run-editor {
+  position: absolute;
+  z-index: 20;
+  top: 64px;
+  right: 22px;
+  width: 320px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 10px 34px #16121a26;
+  padding: 16px;
+  animation: lift 0.16s ease;
+}
+.run-editor label {
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.run-editor .actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+.run-editor small {
+  display: block;
+  margin-top: 12px;
+  font-size: 10px;
+  line-height: 1.55;
+}
+@keyframes lift {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.mark-hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1;
+  cursor: move;
+  pointer-events: all;
+}
+.mark-hit:hover {
+  stroke: #962a3b80;
+  stroke-dasharray: 4 3;
+}
+.mark-hit.selected {
+  stroke: var(--accent);
+  stroke-dasharray: 4 3;
+  fill: #962a3b12;
+}
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 9px 13px;
+  border-radius: 7px;
+  background: var(--red-soft);
+  font-size: 12px;
+  animation: lift 0.16s ease;
+}
+.selection-bar > span {
+  font-weight: 550;
+  color: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-editor,
+  .selection-bar {
+    animation: none;
+  }
+}

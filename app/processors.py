@@ -288,7 +288,25 @@ def edit_pdf(reader, path, output, options):
                 raise ValueError("invalid_option")
             c.setFillColor(color)
             c.setStrokeColor(color)
-            if kind in ("text", "signature"):
+            if kind == "replace":
+                # Existing glyphs cannot be rewritten in place, so the original run is
+                # covered with the page colour behind it and the new words are drawn on top.
+                cover = a.get("background", "#ffffff")
+                if not re.fullmatch(r"#[0-9a-fA-F]{6}", cover):
+                    raise ValueError("invalid_option")
+                c.setFillColor(cover)
+                c.rect(x - 0.6, y - 0.6, w + 1.2, h + 1.2, fill=1, stroke=0)
+                c.setFillColor(color)
+                face = "Helvetica-Bold" if a.get("bold") else "Helvetica-Oblique" if a.get("italic") else "Helvetica"
+                body = str(a.get("text", ""))[:1000]
+                point_size = number(a, "size", 12, 4, 200)
+                if body:
+                    room = w if w > 1 else width
+                    while point_size > 4 and c.stringWidth(body, face, point_size) > room:
+                        point_size -= 0.5
+                c.setFont(face, point_size)
+                c.drawString(x, y + max(0, (h - point_size * 0.72) / 2), body)
+            elif kind in ("text", "signature"):
                 c.setFont("Helvetica-Oblique" if kind == "signature" else "Helvetica", number(a, "size", 16, 6, 100))
                 c.drawString(x, y, str(a.get("text", ""))[:1000])
             elif kind == "highlight":

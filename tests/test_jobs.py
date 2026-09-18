@@ -285,3 +285,42 @@ def test_gzip_archive_keeps_the_original_name(admin_client, pdf_bytes):
     admin_client.post(f'/api/jobs/{jid}/run', json={'operation': 'archive_create', 'options': {'format': 'gz'}})
     folder = finish(jid)
     assert [p.name for p in folder.glob('output/*')] == ['Relatorio.pdf.gz']
+
+
+def test_existing_text_is_covered_and_rewritten(admin_client, pdf_bytes):
+    """Replacing a run hides the original glyphs and puts the new words in their place."""
+    jid = upload(admin_client, pdf_bytes)
+    admin_client.post(f'/api/jobs/{jid}/run', json={'operation': 'pdf_edit', 'options': {'annotations': [
+        {'page': 1, 'type': 'replace', 'x': 0.05, 'y': 0.05, 'w': 0.5, 'h': 0.03,
+         'text': 'Texto substituido', 'size': 12, 'background': '#ffffff', 'color': '#000000'},
+    ]}})
+    folder = finish(jid)
+    pages = PdfReader(folder / 'output' / 'edited.pdf').pages
+    first = pages[0].extract_text() or ''
+    assert 'Texto substituido' in first
+    assert 'Second page' in (pages[1].extract_text() or '')
+
+
+def test_replacement_shrinks_text_that_would_overflow(admin_client, pdf_bytes):
+    jid = upload(admin_client, pdf_bytes)
+    admin_client.post(f'/api/jobs/{jid}/run', json={'operation': 'pdf_edit', 'options': {'annotations': [
+        {'page': 1, 'type': 'replace', 'x': 0.05, 'y': 0.05, 'w': 0.08, 'h': 0.02,
+         'text': 'Uma frase demasiado longa para esta caixa estreita', 'size': 40,
+         'background': '#ffffff', 'color': '#000000'},
+    ]}})
+    folder = finish(jid)
+    # A 40pt run that long would spill off the page; it must still land inside.
+    assert (folder / 'output' / 'edited.pdf').stat().st_size > 0
+    assert 'demasiado longa' in (PdfReader(folder / 'output' / 'edited.pdf').pages[0].extract_text() or '')
+
+
+def test_replacement_rejects_a_bogus_cover_colour(admin_client, pdf_bytes):
+    jid = upload(admin_client, pdf_bytes)
+    admin_client.post(f'/api/jobs/{jid}/run', json={'operation': 'pdf_edit', 'options': {'annotations': [
+        {'page': 1, 'type': 'replace', 'x': 0.1, 'y': 0.1, 'w': 0.2, 'h': 0.02,
+         'text': 'x', 'background': 'url(evil)'},
+    ]}})
+    with connect() as db:
+        row = dict(db.execute('SELECT * FROM jobs WHERE id=?', (jid,)).fetchone())
+    with pytest.raises(ValueError, match='invalid_option'):
+        process(row, storage.job_dir(jid))
