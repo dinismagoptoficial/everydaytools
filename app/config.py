@@ -10,6 +10,7 @@ WEB = Path(os.environ.get("WEB_DIR", "web/dist")).resolve()
 
 DEFAULTS = {
     "installation_name": "Everyday Tools",
+    "default_language": "pt-PT",
     "registration": True,
     "retention_minutes": int(os.getenv("FILE_RETENTION_MINUTES", "60")),
     "max_upload_mb": int(os.getenv("MAX_UPLOAD_SIZE", "256")),

@@ -14,6 +14,7 @@ export type Status = {
   retention_minutes: number;
   max_upload_mb: number;
   smtp: boolean;
+  language: "pt-PT" | "en";
   version: string;
   legal_version: string;
 };

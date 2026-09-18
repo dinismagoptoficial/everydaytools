@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app import config, security, storage
 from app.db import connect
+from app.legal import VERSION
 from app.main import app
 from app.processors import archive_jobs
 from conftest import authenticate, upload
@@ -22,7 +23,7 @@ def test_setup_and_session_fixation(client):
     assert client.cookies.get("everyday_session") != old_cookie
     assert "HttpOnly" in response.headers["set-cookie"]
     assert "SameSite=lax" in response.headers["set-cookie"]
-    assert client.post("/api/setup", json={"email": "x@example.test", "password": "good-test-password", "legal_version": "2026-09-17"}).status_code == 409
+    assert client.post("/api/setup", json={"email": "x@example.test", "password": "good-test-password", "legal_version": VERSION}).status_code == 409
     with connect() as db:
         assert db.execute("SELECT password FROM users").fetchone()[0].startswith("$argon2id$")
         assert db.execute("SELECT count(*) FROM sessions").fetchone()[0] == 1
@@ -155,7 +156,7 @@ def test_only_one_admin_survives_concurrent_setup(client):
     """Setup must be a one-time, race-proof event: no way to end up with two admins."""
     def attempt(n):
         c = TestClient(app, headers={"X-Requested-With": "EverydayTools"})
-        response = c.post("/api/setup", json={"email": f"racer{n}@example.test", "password": "good-test-password", "legal_version": "2026-09-17"})
+        response = c.post("/api/setup", json={"email": f"racer{n}@example.test", "password": "good-test-password", "legal_version": VERSION})
         return response.status_code
     with ThreadPoolExecutor(max_workers=10) as pool:
         results = list(pool.map(attempt, range(10)))

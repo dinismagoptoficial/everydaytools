@@ -105,7 +105,7 @@ Each account accesses its own files. **My account** contains your name, email, l
 
 Files expire 60 minutes after task creation by default. Downloads and retries do not extend retention. Deletion stops processing and removes originals, outputs and temporary files. If a process is still stopping, access is revoked immediately and cleanup retries.
 
-The Docker volume holds accounts, settings, temporary jobs and the model. There is no telemetry, remote font service or advertising. The worker has no network access. Text tools and calculators run in your browser. Optional SMTP is used only for account recovery.
+The Docker volume holds accounts, settings, temporary jobs and the model. There is no telemetry, remote font service or advertising. The worker has no network access. Text tools and calculators run in your browser. Optional SMTP sends account recovery, account creation and configuration test messages. Their content follows each account's language; the first account and defaults use the language selected during setup.
 
 The operator controls access, retention, backups and privacy contacts. The administrator interface cannot download other accounts' documents, but the server operator has technical access to storage. Snapshots, external backups and downloaded copies are outside the application's control. See [privacy and terms](docs/legal.md).
 

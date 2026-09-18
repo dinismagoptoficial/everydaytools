@@ -99,6 +99,7 @@ class Credentials(BaseModel):
 
 class Registration(Credentials):
     website: str = Field(default="", max_length=200)
+    language: Literal["pt-PT", "en"] = "pt-PT"
 
 
 class Setup(Credentials):
@@ -107,6 +108,7 @@ class Setup(Credentials):
     registration: bool = True
     max_upload_mb: int = Field(default=256, ge=1, le=10240)
     retention_minutes: int = Field(default=60, ge=5, le=1440)
+    language: Literal["pt-PT", "en"] = "pt-PT"
 
 
 class Preferences(BaseModel):
@@ -145,7 +147,8 @@ def status():
     prefs = settings()
     return {"setup": setup, "name": prefs["installation_name"], "registration": prefs["registration"],
             "retention_minutes": prefs["retention_minutes"], "max_upload_mb": prefs["max_upload_mb"],
-            "smtp": mail.available(), "version": __version__, "legal_version": legal.VERSION}
+            "smtp": mail.available(), "language": prefs["default_language"],
+            "version": __version__, "legal_version": legal.VERSION}
 
 
 @app.get("/api/health")
@@ -166,9 +169,12 @@ def setup(body: Setup, request: Request, response: Response):
         db.execute("INSERT INTO users VALUES (?,?,?,'ADMIN',0,?)", (uid, email, hashed, time.time()))
         for key in ("installation_name", "registration", "max_upload_mb", "retention_minutes"):
             db.execute("UPDATE settings SET value=? WHERE key=?", (json.dumps(getattr(body, key)), key))
+        db.execute("UPDATE settings SET value=? WHERE key='default_language'", (json.dumps(body.language),))
+        db.execute("INSERT OR REPLACE INTO user_preferences VALUES (?,?,?)", (uid, "", body.language))
         for key, value in (("legal_version", body.legal_version), ("legal_reviewed_at", time.time())):
             db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, json.dumps(value)))
         security.new_session(db, response, uid, request)
+    mail.send_welcome("", email, body.language, body.installation_name)
     return {"ok": True}
 
 
@@ -181,13 +187,16 @@ def register(body: Registration, request: Request, response: Response):
         raise HTTPException(400, "invalid_input")
     hashed = security.password_hash(body.password)
     with connect(True) as db:
-        if not settings(db)["registration"] or not db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
+        prefs = settings(db)
+        if not prefs["registration"] or not db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             raise HTTPException(403, "registration_closed")
         if db.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
             raise HTTPException(409, "account_exists")
         uid = secrets.token_hex(16)
         db.execute("INSERT INTO users VALUES (?,?,?,'USER',0,?)", (uid, email, hashed, time.time()))
+        db.execute("INSERT INTO user_preferences VALUES (?,?,?)", (uid, "", body.language))
         security.new_session(db, response, uid, request)
+    mail.send_welcome("", email, body.language, prefs["installation_name"])
     return {"ok": True}
 
 
@@ -287,9 +296,9 @@ def recover(body: Recovery, request: Request):
     email = security.email_address(body.email)
     security.rate_limit("recover-account:" + email, 3, 3600)
     with connect(True) as db:
-        user = db.execute("""SELECT u.id, coalesce(p.name,'') AS name, coalesce(p.language,'pt-PT') AS language
+        user = db.execute("""SELECT u.id, coalesce(p.name,'') AS name, coalesce(p.language,?) AS language
                              FROM users u LEFT JOIN user_preferences p ON p.user_id=u.id
-                             WHERE u.email=? AND u.disabled=0""", (email,)).fetchone()
+                             WHERE u.email=? AND u.disabled=0""", (prefs["default_language"], email)).fetchone()
         if user:
             token = secrets.token_urlsafe(32)
             db.execute("DELETE FROM resets WHERE user_id=?", (user["id"],))
@@ -583,10 +592,9 @@ def admin_mail_test(body: MailSettings, request: Request, user=Depends(security.
     if not host or not sender:
         raise HTTPException(400, "smtp_unavailable")
     account = user_public(user)
-    message = mail.build(account["name"], user["email"], body.public_url.strip().rstrip("/") or
-                         prefs["smtp_public_url"] or "http://everyday-tools.local",
-                         account["language"] or "pt-PT", prefs["installation_name"])
-    message["From"] = mail.formataddr((prefs["installation_name"], sender))
+    message = mail.build_test(user["email"], account["language"] or prefs["default_language"],
+                              prefs["installation_name"])
+    message["From"] = mail.formataddr((mail.clean_header(prefs["installation_name"]), sender))
     try:
         mail.deliver(host, body.port, body.security, body.user.strip(), body.password or prefs["smtp_password"] or "", message)
     except Exception:

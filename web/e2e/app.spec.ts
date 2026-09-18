@@ -133,6 +133,18 @@ test("registration and login use separate personal file lists", async ({
 }) => {
   await page.goto("/");
   await expect(page.locator(".auth-form")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Esqueceste-te da palavra-passe?" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Esqueceste-te da palavra-passe?" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Recuperar palavra-passe" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Voltar ao início de sessão" })
+    .click();
   await page.getByRole("button", { name: "Criar uma conta" }).click();
   const unique = `person-${Date.now()}@example.test`;
   await page.getByLabel("E-mail", { exact: true }).fill(unique);

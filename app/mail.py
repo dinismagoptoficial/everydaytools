@@ -4,6 +4,7 @@ import ssl
 import threading
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
+from html import escape
 from pathlib import Path
 
 from .db import connect, settings
@@ -59,51 +60,53 @@ def deliver(host, port, security, user, password, message):
         smtp.send_message(message)
 
 
-def build(name, address, link, language, installation):
-    pt = language != "en"
+def clean_header(value):
+    return str(value).replace("\r", " ").replace("\n", " ").strip()
+
+
+def card(address, subject, title, paragraphs, plain, language, installation, action="", link=""):
     message = EmailMessage()
-    message["Subject"] = f"{installation}: " + ("recuperar o acesso" if pt else "recover your access")
+    message["Subject"] = clean_header(subject)
     message["To"] = address
-    greeting = f"Olá {name}," if pt and name else "Olá," if pt else f"Hi {name}," if name else "Hi,"
-    lines = ([
-        "Recebemos um pedido para definir uma nova palavra-passe na tua conta.",
-        "A ligação abaixo é válida durante 30 minutos e só pode ser usada uma vez.",
-        "Se não foste tu, ignora esta mensagem. A palavra-passe atual continua válida.",
-    ] if pt else [
-        "We received a request to set a new password for your account.",
-        "The link below works for 30 minutes and can only be used once.",
-        "If this was not you, ignore this message. Your current password stays valid.",
-    ])
-    action = "Definir nova palavra-passe" if pt else "Set a new password"
-    fallback = ("Se o botão não funcionar, copia este endereço para o navegador:"
-                if pt else "If the button does not work, copy this address into your browser:")
-    signature = f"{installation}"
-    message.set_content("\n\n".join([greeting, *lines, f"{action}: {link}", signature]))
+    message.set_content("\n\n".join(plain))
 
     logo = make_msgid()[1:-1]
+    safe_title = escape(title)
+    safe_installation = escape(installation)
+    safe_link = escape(link, quote=True)
+    content = "".join(
+        f'<p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#4b4a50">{escape(line)}</p>'
+        for line in paragraphs
+    )
+    button = ""
+    fallback = ""
+    if action and link:
+        button = f"""<tr><td style="padding:12px 32px 4px">
+<a href="{safe_link}" style="display:inline-block;background:#962a3b;color:#ffffff;text-decoration:none;
+font-size:14px;font-weight:600;padding:13px 22px;border-radius:6px">{escape(action)}</a>
+</td></tr>"""
+        help_text = ("Se o botão não funcionar, copia este endereço para o navegador:"
+                     if language == "pt-PT" else "If the button does not work, copy this address into your browser:")
+        fallback = f"""<tr><td style="padding:18px 32px 28px">
+<p style="margin:0 0 6px;font-size:12px;color:#64666d">{help_text}</p>
+<p style="margin:0;font-size:12px;word-break:break-all"><a href="{safe_link}" style="color:#962a3b">{safe_link}</a></p>
+</td></tr>"""
     message.add_alternative(f"""<!doctype html>
-<html lang="{'pt' if pt else 'en'}"><body style="margin:0;padding:24px;background:#f4f4f5;
+<html lang="{'pt' if language == 'pt-PT' else 'en'}"><body style="margin:0;padding:24px;background:#f4f4f5;
 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#26272b">
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;margin:0 auto;
 background:#ffffff;border:1px solid #e6e6e9;border-radius:10px">
 <tr><td style="padding:28px 32px 0">
-<img src="cid:{logo}" width="44" height="44" alt="{installation}" style="display:block;border:0">
+<img src="cid:{logo}" width="44" height="44" alt="{safe_installation}" style="display:block;border:0">
 </td></tr>
-<tr><td style="padding:20px 32px 0">
-<h1 style="margin:0 0 16px;font-size:19px;font-weight:600;letter-spacing:-0.3px">{action}</h1>
-<p style="margin:0 0 12px;font-size:14px;line-height:1.65">{greeting}</p>
-{"".join(f'<p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#4b4a50">{line}</p>' for line in lines)}
+<tr><td style="padding:20px 32px 8px">
+<h1 style="margin:0 0 16px;font-size:19px;font-weight:600;letter-spacing:-0.3px">{safe_title}</h1>
+{content}
 </td></tr>
-<tr><td style="padding:12px 32px 4px">
-<a href="{link}" style="display:inline-block;background:#962a3b;color:#ffffff;text-decoration:none;
-font-size:14px;font-weight:600;padding:13px 22px;border-radius:6px">{action}</a>
-</td></tr>
-<tr><td style="padding:18px 32px 28px">
-<p style="margin:0 0 6px;font-size:12px;color:#73767d">{fallback}</p>
-<p style="margin:0;font-size:12px;word-break:break-all"><a href="{link}" style="color:#962a3b">{link}</a></p>
-</td></tr>
+{button}
+{fallback}
 <tr><td style="padding:16px 32px 24px;border-top:1px solid #efeff1">
-<p style="margin:0;font-size:11px;color:#8a8a91">{signature}</p>
+<p style="margin:0;font-size:11px;color:#74747b">{safe_installation}</p>
 </td></tr>
 </table></body></html>""", subtype="html")
 
@@ -113,13 +116,56 @@ font-size:14px;font-weight:600;padding:13px 22px;border-radius:6px">{action}</a>
     return message
 
 
+def build(name, address, link, language, installation):
+    pt = language == "pt-PT"
+    greeting = f"Olá {name}," if pt and name else "Olá," if pt else f"Hi {name}," if name else "Hi,"
+    lines = ([
+        greeting,
+        "Recebemos um pedido para definir uma nova palavra-passe na tua conta.",
+        "A ligação abaixo é válida durante 30 minutos e só pode ser usada uma vez.",
+        "Se não foste tu, ignora esta mensagem. A palavra-passe atual continua válida.",
+    ] if pt else [
+        greeting,
+        "We received a request to set a new password for your account.",
+        "The link below works for 30 minutes and can only be used once.",
+        "If this was not you, ignore this message. Your current password stays valid.",
+    ])
+    title = "Definir nova palavra-passe" if pt else "Set a new password"
+    subject = f"{installation}: " + ("recuperar o acesso" if pt else "recover your access")
+    plain = [*lines, f"{title}: {link}", installation]
+    return card(address, subject, title, lines, plain, language, installation, title, link)
+
+
+def build_test(address, language, installation):
+    text = "Teste do sistema, tudo ok!" if language == "pt-PT" else "System test, everything is OK!"
+    subject = f"{installation}: " + ("teste do sistema" if language == "pt-PT" else "system test")
+    return card(address, subject, text, [], [text], language, installation)
+
+
+def build_welcome(name, address, language, installation):
+    pt = language == "pt-PT"
+    greeting = f"Olá {name}," if pt and name else "Olá," if pt else f"Hi {name}," if name else "Hi,"
+    lines = ([greeting, f"A tua conta no {installation} foi criada com sucesso."] if pt else
+             [greeting, f"Your {installation} account was created successfully."])
+    title = "Conta criada" if pt else "Account created"
+    subject = f"{installation}: " + ("conta criada" if pt else "account created")
+    return card(address, subject, title, lines, [*lines, installation], language, installation)
+
+
 def send_recovery(name, address, link, language, installation):
+    send(build(name, address, link, language, installation), installation)
+
+
+def send_welcome(name, address, language, installation):
+    send(build_welcome(name, address, language, installation), installation)
+
+
+def send(message, installation):
     with connect() as db:
         prefs = settings(db)
     if not (prefs.get("smtp_host") and prefs.get("smtp_from")):
         return
-    message = build(name, address, link, language, installation)
-    message["From"] = formataddr((installation, prefs["smtp_from"]))
+    message["From"] = formataddr((clean_header(installation), prefs["smtp_from"]))
     args = (prefs["smtp_host"], int(prefs.get("smtp_port") or 587), prefs.get("smtp_security") or "starttls",
             prefs.get("smtp_user") or "", prefs.get("smtp_password") or "", message)
     threading.Thread(target=attempt, args=args, daemon=True).start()
@@ -129,4 +175,4 @@ def attempt(host, port, security, user, password, message):
     try:
         deliver(host, port, security, user, password, message)
     except Exception:
-        print("recovery message not delivered", flush=True)
+        print("email message not delivered", flush=True)

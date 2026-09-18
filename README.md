@@ -112,7 +112,7 @@ Cada conta acede aos seus ficheiros. Em **A minha conta** podes editar nome, e-m
 
 Os ficheiros expiram, por defeito, 60 minutos após a criação da tarefa. O prazo não é prolongado por downloads ou novas tentativas. A eliminação interrompe o processamento e remove originais, resultados e temporários. Se o processo ainda estiver a terminar, o acesso é revogado e a limpeza volta a tentar.
 
-O volume Docker guarda contas, definições, tarefas temporárias e o modelo. Não há telemetria, fontes remotas ou publicidade. O worker não tem acesso à rede. As ferramentas de texto e calculadoras correm no browser. SMTP é opcional e serve apenas para recuperar acesso à conta.
+O volume Docker guarda contas, definições, tarefas temporárias e o modelo. Não há telemetria, fontes remotas ou publicidade. O worker não tem acesso à rede. As ferramentas de texto e calculadoras correm no browser. O SMTP opcional envia recuperações de acesso, confirmações de criação de conta e testes de configuração. O conteúdo segue o idioma escolhido por cada conta; a primeira conta e os valores predefinidos usam o idioma selecionado durante a instalação.
 
 O administrador define o acesso, a retenção, os backups e os contactos de privacidade da sua instalação. A interface não lhe permite descarregar documentos de outras contas, mas quem controla o servidor tem acesso técnico ao armazenamento. A aplicação não controla snapshots, backups externos ou cópias já descarregadas. Consulta [privacidade e condições](docs/legal.md).
 

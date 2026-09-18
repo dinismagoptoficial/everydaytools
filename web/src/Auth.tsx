@@ -6,9 +6,11 @@ import { useError, useText } from "./i18n";
 
 export default function Auth({
   status,
+  language,
   onDone,
 }: {
   status: Status;
+  language: "pt-PT" | "en";
   onDone: () => void;
 }) {
   const t = useText(),
@@ -64,11 +66,12 @@ export default function Auth({
               max_upload_mb: maxUpload,
               retention_minutes: retention,
               legal_version: legalVersion,
+              language,
             }
           : mode === "reset"
             ? { token, password }
             : mode === "register"
-              ? { email, password, website }
+              ? { email, password, website, language }
               : mode === "recover"
                 ? { email }
                 : { email, password },
@@ -89,7 +92,12 @@ export default function Auth({
     <div className="auth-wrap">
       <div className="auth-intro">
         <div className="brand large">
-          <img src="/logo.png" alt="" className="brand-mark" draggable={false} />
+          <img
+            src="/logo.png"
+            alt=""
+            className="brand-mark"
+            draggable={false}
+          />
           <span>Everyday Tools</span>
         </div>
         <p>Your digital Swiss Army knife.</p>
@@ -147,10 +155,25 @@ export default function Auth({
                 "Vamos preparar o teu espaço de ferramentas.",
                 "Let’s get your tools ready.",
               )
-            : t(
-                "Entra para aceder às tuas ferramentas e ficheiros.",
-                "Sign in to access your tools and files.",
-              )}
+            : mode === "recover"
+              ? t(
+                  "Recebe uma ligação segura para definires uma nova palavra-passe.",
+                  "Receive a secure link to set a new password.",
+                )
+              : mode === "reset"
+                ? t(
+                    "Escolhe uma nova palavra-passe para a tua conta.",
+                    "Choose a new password for your account.",
+                  )
+                : mode === "register"
+                  ? t(
+                      "Cria a tua conta para começares a utilizar as ferramentas.",
+                      "Create your account to start using the tools.",
+                    )
+                  : t(
+                      "Entra para aceder às tuas ferramentas e ficheiros.",
+                      "Sign in to access your tools and files.",
+                    )}
         </p>
         <form onSubmit={submit}>
           {!(mode === "setup" && step > 1) && (
@@ -288,7 +311,10 @@ export default function Auth({
               )}
             </p>
           )}
-          <button className="primary wide" disabled={busy}>
+          <button
+            className="primary wide"
+            disabled={busy || (mode === "recover" && sent)}
+          >
             {busy
               ? t("A aguardar…", "Please wait…")
               : mode === "setup"
@@ -330,20 +356,26 @@ export default function Auth({
                       {t("Criar uma conta", "Create an account")}
                     </button>
                   )}
-                  {status.smtp && (
-                    <button className="link" onClick={() => setMode("recover")}>
-                      {t(
-                        "Esqueceste-te da palavra-passe?",
-                        "Forgot your password?",
-                      )}
-                    </button>
-                  )}
+                  <button
+                    className="link"
+                    onClick={() => {
+                      setMode("recover");
+                      setSent(false);
+                      setError("");
+                    }}
+                  >
+                    {t(
+                      "Esqueceste-te da palavra-passe?",
+                      "Forgot your password?",
+                    )}
+                  </button>
                 </>
               ) : (
                 <button
                   className="link"
                   onClick={() => {
                     setMode("login");
+                    setSent(false);
                     setError("");
                   }}
                 >

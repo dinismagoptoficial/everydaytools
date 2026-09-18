@@ -138,7 +138,9 @@ function Application({
   async function bootstrap() {
     setError("");
     try {
-      setStatus(await api("/status"));
+      const currentStatus = await api<Status>("/status");
+      setStatus(currentStatus);
+      setLang(currentStatus.language);
       try {
         const me = await api<User>("/me");
         setCsrf(me.csrf);
@@ -442,7 +444,7 @@ function Application({
     return (
       <>
         <div className="auth-language">{languageSelector}</div>
-        <Auth status={status} onDone={bootstrap} />
+        <Auth status={status} language={lang} onDone={bootstrap} />
         {error && (
           <div className="toast" role="alert">
             {errorText(error)}

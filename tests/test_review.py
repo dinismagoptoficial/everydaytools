@@ -19,7 +19,7 @@ from conftest import fake_job, upload
 
 
 def test_setup_requires_current_legal_notice(client):
-    payload = {"email": "admin@example.test", "password": "good-test-password"}
+    payload = {"email": "admin@example.test", "password": "good-test-password", "language": "en"}
     assert client.post('/api/setup', json=payload).status_code == 422
     assert client.post('/api/setup', json=payload | {'legal_version': 'old'}).status_code == 422
     notice = client.get('/api/legal').json()
@@ -27,8 +27,11 @@ def test_setup_requires_current_legal_notice(client):
     assert notice['author'] == 'Dinis Mago'
     assert set(notice['documents']) == {'pt-PT', 'en'}
     assert client.post('/api/setup', json=payload | {'legal_version': VERSION}).status_code == 200
+    assert client.get('/api/status').json()['language'] == 'en'
+    assert client.get('/api/me').json()['language'] == 'en'
     with connect() as db:
         assert json.loads(db.execute("SELECT value FROM settings WHERE key='legal_version'").fetchone()[0]) == VERSION
+        assert json.loads(db.execute("SELECT value FROM settings WHERE key='default_language'").fetchone()[0]) == 'en'
 
 
 def test_account_preferences_and_email_verification(admin_client):

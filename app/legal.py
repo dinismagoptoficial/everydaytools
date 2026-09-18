@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION = "2026-09-17"
+VERSION = "2026-09-18"
 AUTHOR = "Dinis Mago"
 AUTHOR_URL = "https://github.com/dinismagoptoficial"
 
@@ -16,7 +16,7 @@ DOCUMENTS = {
         {"id": "privacy", "title": "Privacidade e retenção", "paragraphs": [
             "Esta instalação é gerida pela pessoa ou entidade que a disponibiliza. O autor do software não recebe os teus documentos nem gere automaticamente os dados de instalações de terceiros. Para questões sobre os teus dados, contacta quem te deu acesso a esta instalação.",
             "São guardados o e-mail, o hash da palavra-passe, as preferências da conta e os dados necessários à sessão. Os ficheiros, os nomes e as opções de processamento ficam associados temporariamente à tua conta. O administrador pode gerir contas e estados das tarefas; a interface não lhe dá acesso aos documentos de outras pessoas. Quem controla o servidor tem acesso técnico ao respetivo armazenamento.",
-            "Os ficheiros são processados no teu dispositivo ou neste servidor. Não existem analytics, publicidade ou envio de documentos para serviços externos. Se o administrador configurar SMTP, o endereço de e-mail e a mensagem de recuperação são enviados pelo servidor de correio escolhido.",
+            "Os ficheiros são processados no teu dispositivo ou neste servidor. Não existem analytics, publicidade ou envio de documentos para serviços externos. Se o administrador configurar SMTP, o endereço e as mensagens da conta, incluindo criação e recuperação, passam pelo servidor de correio escolhido.",
             "Por defeito, originais, resultados e temporários expiram 60 minutos após a criação da tarefa. O administrador pode alterar o prazo para novos ficheiros. A interface mostra o prazo de cada tarefa. Eliminar agora remove as cópias controladas pela aplicação depois de parar o processamento. A limpeza verifica os prazos ao arrancar e periodicamente.",
             "As contas e preferências mantêm-se até serem eliminadas. As sessões expiram ao fim de sete dias e as ligações de recuperação ao fim de 30 minutos. Contadores de proteção contra abuso são temporários. Backups da aplicação guardam contas e definições, sem documentos ou sessões. A retenção dos backups e os registos de infraestrutura dependem do administrador.",
             "Podes consultar e corrigir os dados da conta, descarregar resultados e eliminar tarefas. Para eliminação da conta, acesso a backups ou exercício de outros direitos aplicáveis, contacta o administrador. A base legal, os contactos do responsável e outras informações exigidas para utilização fora do âmbito pessoal devem ser definidos por quem gere a instalação. Este aviso técnico não constitui uma declaração automática de conformidade com o RGPD.",
@@ -38,7 +38,7 @@ DOCUMENTS = {
         {"id": "privacy", "title": "Privacy and retention", "paragraphs": [
             "This installation is operated by the person or entity providing access. The software author does not receive your documents or automatically manage data in third-party installations. For questions about your data, contact the person who gave you access.",
             "The application stores your email, password hash, account preferences and session data. Files, names and processing options are temporarily associated with your account. Administrators can manage accounts and task status; the interface does not give them access to other people's documents. The server operator has technical access to its storage.",
-            "Files are processed on your device or this server. There are no analytics, advertising or external document processing services. If SMTP is configured, your email address and recovery message pass through the mail server selected by the administrator.",
+            "Files are processed on your device or this server. There are no analytics, advertising or external document processing services. If SMTP is configured, your address and account messages, including creation and recovery, pass through the mail server selected by the administrator.",
             "By default, originals, results and temporary files expire 60 minutes after task creation. Administrators can change retention for new files. Each task displays its expiry time. Delete now removes application-controlled copies after stopping processing. Cleanup checks deadlines at startup and periodically.",
             "Accounts and preferences remain until deleted. Sessions expire after seven days and recovery links after 30 minutes. Abuse prevention counters are temporary. Application backups contain accounts and settings, without documents or sessions. Backup retention and infrastructure logs are managed by the administrator.",
             "You can view and correct your account details, download results and delete tasks. Contact the administrator for account deletion, access to backups or other applicable data rights. The operator must define the legal basis, controller contact details and any additional information required outside personal use. This technical notice is not an automatic declaration of GDPR compliance.",
