@@ -109,6 +109,24 @@ def test_settings_admin_and_disabled_user(admin_client):
     assert admin_client.post("/api/register", json={"email": "new@example.test", "password": "good-test-password"}).status_code == 403
 
 
+def test_admin_can_delete_a_user_and_all_owned_files(admin_client, pdf_bytes):
+    with TestClient(app, headers={"X-Requested-With": "EverydayTools"}) as account:
+        user = authenticate(account, "delete-me@example.test", setup=False)
+        job = upload(account, pdf_bytes)
+        folder = storage.job_dir(job)
+        assert folder.exists()
+        response = admin_client.delete(f"/api/admin/users/{user['id']}")
+        assert response.status_code == 200, response.text
+        assert account.get("/api/me").status_code == 401
+        assert not folder.exists()
+        with connect() as db:
+            assert not db.execute("SELECT 1 FROM users WHERE id=?", (user["id"],)).fetchone()
+            assert not db.execute("SELECT 1 FROM jobs WHERE user_id=?", (user["id"],)).fetchone()
+
+    admin = admin_client.get("/api/me").json()
+    assert admin_client.delete(f"/api/admin/users/{admin['id']}").status_code == 400
+
+
 def test_password_change_invalidates_sessions(admin_client):
     with TestClient(app, headers={"X-Requested-With": "EverydayTools"}) as second:
         second.post('/api/login', json={"email": "admin@example.test", "password": "good-test-password"})

@@ -1,14 +1,7 @@
 import { useContext, useEffect, useState } from "react";
-import { api } from "./api";
+import { api, type MailProvider } from "./api";
 import { LanguageContext, useError, useText } from "./i18n";
 
-type Provider = {
-  label: string;
-  host: string;
-  port: number;
-  security: string;
-  hint: Record<string, string>;
-};
 type Saved = {
   smtp_provider: string;
   smtp_host: string;
@@ -24,7 +17,7 @@ export default function MailSettings() {
   const t = useText(),
     errorText = useError(),
     lang = useContext(LanguageContext);
-  const [providers, setProviders] = useState<Record<string, Provider>>({});
+  const [providers, setProviders] = useState<Record<string, MailProvider>>({});
   const [form, setForm] = useState({
     provider: "custom",
     host: "",
@@ -41,7 +34,9 @@ export default function MailSettings() {
     [note, setNote] = useState("");
 
   useEffect(() => {
-    api<{ providers: Record<string, Provider>; settings: Saved }>("/admin/smtp")
+    api<{ providers: Record<string, MailProvider>; settings: Saved }>(
+      "/admin/smtp",
+    )
       .then(({ providers, settings }) => {
         setProviders(providers);
         setStored(settings.password_set);

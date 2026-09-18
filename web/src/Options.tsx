@@ -294,6 +294,48 @@ export default function Options({
                 )}
               </label>
             )}
+            {selected === "pdf_images" && (
+              <>
+                {selectField(
+                  "format",
+                  t("Formato das imagens", "Image format"),
+                  ["png", "jpg", "webp"],
+                  "png",
+                )}
+                <div className="form-grid">
+                  <label>
+                    {t("Resolução", "Resolution")}
+                    <select
+                      value={options.dpi ?? 144}
+                      onChange={(e) => update("dpi", +e.target.value)}
+                    >
+                      <option value={96}>96 DPI</option>
+                      <option value={144}>144 DPI</option>
+                      <option value={200}>200 DPI</option>
+                      <option value={300}>300 DPI</option>
+                    </select>
+                  </label>
+                  <label>
+                    {t("Qualidade", "Quality")} {options.quality ?? 90}%
+                    <input
+                      type="range"
+                      min={1}
+                      max={100}
+                      value={options.quality ?? 90}
+                      onChange={(e) => update("quality", +e.target.value)}
+                    />
+                  </label>
+                </div>
+              </>
+            )}
+            {selected === "pdf_word" && (
+              <p className="notice">
+                {t(
+                  "O texto fica editável. PDFs digitalizados são inseridos como páginas de imagem e a disposição pode variar.",
+                  "Text remains editable. Scanned PDFs are inserted as page images and layout may vary.",
+                )}
+              </p>
+            )}
             {selected === "pdf_rotate" && (
               <label>
                 {t("Rotação", "Rotation")}

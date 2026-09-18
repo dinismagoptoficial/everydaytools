@@ -29,8 +29,9 @@ Endereço local:  http://everyday-tools.local
 Acesso por IP:   http://192.168.1.50
 ```
 
-Abre esse endereço, cria a tua conta de administrador e já está. Não há palavras-passe
-predefinidas para trocar nem ficheiros de configuração para editar.
+Abre esse endereço e cria a conta de administrador. O assistente pede o idioma principal,
+os limites iniciais e, se quiseres, os dados SMTP para recuperação de acesso. Não há
+palavras-passe predefinidas para trocar nem ficheiros de configuração para editar.
 
 Correr o comando outra vez atualiza a instalação sem tocar nas contas, nas definições
 nem nos ficheiros que estejam a ser processados.
@@ -78,7 +79,7 @@ Para mudar a porta, define `PORT=8080` no `.env` antes de arrancar.
 
 | Área | Ferramentas |
 | --- | --- |
-| PDF | Juntar, dividir, ordenar, rodar, comprimir, proteger, desbloquear, OCR em português e inglês, extrair texto e imagens, preencher formulários, PDF/A e reparação |
+| PDF | Juntar, dividir, ordenar, rodar, comprimir, proteger, desbloquear, OCR em português e inglês, converter para Word, PNG, JPG ou WebP, extrair texto e imagens, preencher formulários, PDF/A e reparação |
 | Editor PDF | Texto, imagens, assinatura visual, desenho, realce, sublinhado, numeração, marca de água e ocultação permanente |
 | Documentos | Word, Excel, PowerPoint e OpenDocument para PDF; conversão entre CSV, XLSX e ODS |
 | Imagens | Conversão, compressão, dimensões, remoção de metadados e remoção de fundo com modelo local e ajuste manual da máscara |
@@ -86,9 +87,9 @@ Para mudar a porta, define `PORT=8080` no `.env` antes de arrancar.
 | Arquivos | Criar e extrair ZIP, TAR, GZIP e 7z |
 | Dia a dia | QR e códigos de barras, palavras-passe, frases-passe, texto, comparação, unidades, percentagens, idade e timestamps |
 
-As ferramentas compatíveis aparecem depois de escolheres os ficheiros. Operações em lote podem produzir resultados individuais e um ZIP para descarregar tudo. Os resultados compatíveis podem ser pré-visualizados antes do download. Na remoção de fundo podes corrigir a máscara, escolher uma cor ou carregar outra imagem e preparar o PNG final no browser.
+As ferramentas compatíveis aparecem depois de escolheres os ficheiros. Operações em lote podem produzir resultados individuais e um ZIP para descarregar tudo. Imagens, PDF, DOCX, XLSX, ODS, CSV e texto podem ser pré-visualizados com zoom e deslocação por arrasto. Na remoção de fundo podes corrigir a máscara, escolher uma cor ou carregar outra imagem e preparar o PNG final no browser.
 
-O editor acrescenta conteúdo; não reescreve o texto original. A assinatura é visual, sem certificado digital. As páginas com ocultações permanentes são reconstruídas como imagem. A fidelidade de Office, o OCR e os contornos da remoção de fundo dependem dos ficheiros. PDF/A é produzido pelo OCRmyPDF, sem validação independente com veraPDF. Os formulários suportam campos de texto e lista, sem XFA. GZIP aceita um ficheiro por operação.
+O texto e as imagens existentes no PDF podem ser substituídos, movidos ou redimensionados através da cobertura da posição original e da colocação de conteúdo editável por cima. A assinatura é visual, sem certificado digital. As páginas com ocultações permanentes são reconstruídas como imagem. A fidelidade de Office e PDF para Word, o OCR e os contornos da remoção de fundo dependem dos ficheiros. PDF/A é produzido pelo OCRmyPDF, sem validação independente com veraPDF. Os formulários suportam campos de texto e lista, sem XFA. GZIP aceita um ficheiro por operação.
 
 ## Servidores com menos recursos
 
@@ -108,7 +109,7 @@ No perfil normal, a fila permite até 3 tarefas leves, 2 médias e 1 pesada, com
 
 ## Contas, ficheiros e privacidade
 
-Cada conta acede aos seus ficheiros. Em **A minha conta** podes editar nome, e-mail, idioma e palavra-passe. Alterar o e-mail exige a palavra-passe atual e termina as outras sessões.
+Cada conta acede aos seus ficheiros. Em **A minha conta** podes editar nome, e-mail, idioma e palavra-passe. Alterar o e-mail exige a palavra-passe atual e termina as outras sessões. O administrador pode desativar ou eliminar contas normais; a eliminação revoga sessões e remove os ficheiros associados.
 
 Os ficheiros expiram, por defeito, 60 minutos após a criação da tarefa. O prazo não é prolongado por downloads ou novas tentativas. A eliminação interrompe o processamento e remove originais, resultados e temporários. Se o processo ainda estiver a terminar, o acesso é revogado e a limpeza volta a tentar.
 

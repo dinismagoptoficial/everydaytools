@@ -75,7 +75,8 @@ image.save(image_buffer, 'PNG')
 png = image_buffer.getvalue()
 
 for operation, options in [('pdf_merge', {}), ('pdf_split', {}), ('pdf_pages', {'pages': '2,1'}), ('pdf_rotate', {}),
-                           ('pdf_watermark', {'text': 'Local'}), ('pdf_number', {}), ('pdf_text', {}), ('pdf_images', {}),
+                           ('pdf_watermark', {'text': 'Local'}), ('pdf_number', {}), ('pdf_text', {}),
+                           ('pdf_images', {'format': 'jpg', 'dpi': 96}), ('pdf_word', {}),
                            ('pdf_compress', {}), ('pdf_ocr', {}), ('pdf_archive', {}), ('pdf_repair', {}),
                            ('pdf_edit', {'annotations': [{'type': 'text', 'page': 1, 'x': .1, 'y': .2, 'text': 'Added locally'}, {'type': 'redact', 'page': 2, 'x': 0, 'y': 0, 'w': 1, 'h': .5}]})]:
     run('document.pdf', pdf, operation, options)

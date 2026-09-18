@@ -45,8 +45,14 @@ export const toolCopy: Record<string, [string, string, string, string]> = {
   pdf_images: [
     "PDF para imagens",
     "PDF to images",
-    "Exporta páginas como imagens PNG.",
-    "Export pages as PNG images.",
+    "Exporta páginas em PNG, JPG ou WebP.",
+    "Export pages as PNG, JPG or WebP images.",
+  ],
+  pdf_word: [
+    "PDF para Word",
+    "PDF to Word",
+    "Cria um DOCX editável a partir do texto e das imagens.",
+    "Create an editable DOCX from the text and images.",
   ],
   pdf_watermark: [
     "Marca de água",

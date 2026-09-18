@@ -21,9 +21,10 @@ curl -fsSL https://raw.githubusercontent.com/dinismagoptoficial/everydaytools/ma
 ```
 
 That is the whole thing. The installer handles Docker, fetches the project, starts the
-services and prints the address when it is done. Open that address, create your
-administrator account and you are running. There are no default passwords to change and
-no configuration files to edit.
+services and prints the address when it is done. Open that address and create the
+administrator account. Setup asks for the main language, initial limits and optional
+SMTP details for account recovery. There are no default passwords to change and no
+configuration files to edit.
 
 Running the command again updates the installation without touching accounts, settings
 or files still being processed.
@@ -71,7 +72,7 @@ To change the port, set `PORT=8080` in `.env` before starting.
 
 | Area | Features |
 | --- | --- |
-| PDF | Merge, split, reorder, rotate, compress, protect, unlock, Portuguese and English OCR, extract text and images, fill forms, PDF/A and repair |
+| PDF | Merge, split, reorder, rotate, compress, protect, unlock, Portuguese and English OCR, convert to Word, PNG, JPG or WebP, extract text and images, fill forms, PDF/A and repair |
 | PDF editor | Text, images, visual signatures, drawing, highlights, underlining, page numbers, watermarks and permanent redaction |
 | Documents | Word, Excel, PowerPoint and OpenDocument to PDF; CSV, XLSX and ODS conversion |
 | Images | Conversion, compression, resizing, metadata removal, local background removal and manual mask adjustment |
@@ -79,9 +80,9 @@ To change the port, set `PORT=8080` in `.env` before starting.
 | Archives | Create and extract ZIP, TAR, GZIP and 7z |
 | Everyday | QR and barcodes, passwords, passphrases, text, comparisons, units, percentages, age and timestamps |
 
-Compatible tools appear after selecting files. Batch operations can provide individual outputs and a ZIP containing all results. Compatible results can be previewed before download. After background removal, you can correct the mask, choose a colour or upload another image and prepare the final PNG in the browser.
+Compatible tools appear after selecting files. Batch operations can provide individual outputs and a ZIP containing all results. Images, PDF, DOCX, XLSX, ODS, CSV and text can be previewed with zoom and drag navigation. After background removal, you can correct the mask, choose a colour or upload another image and prepare the final PNG in the browser.
 
-The editor adds content rather than rewriting existing text. Signatures are visual, without digital certificates. Redacted pages are rebuilt as images. Office fidelity, OCR and background removal edges depend on the input. PDF/A is produced by OCRmyPDF without independent veraPDF validation. Forms support text and list fields, without XFA. GZIP accepts one file per operation.
+Existing PDF text and pictures can be replaced, moved or resized by covering their original position and placing editable content above it. Signatures are visual, without digital certificates. Redacted pages are rebuilt as images. Office and PDF to Word fidelity, OCR and background removal edges depend on the input. PDF/A is produced by OCRmyPDF without independent veraPDF validation. Forms support text and list fields, without XFA. GZIP accepts one file per operation.
 
 ## Smaller servers
 
@@ -101,7 +102,7 @@ The normal queue allows up to 3 light, 2 medium and 1 heavy tasks, subject to a 
 
 ## Accounts and data
 
-Each account accesses its own files. **My account** contains your name, email, language and password settings. Changing your email requires your current password and signs out other sessions.
+Each account accesses its own files. **My account** contains your name, email, language and password settings. Changing your email requires your current password and signs out other sessions. Administrators can disable or delete regular accounts; deletion revokes sessions and removes associated files.
 
 Files expire 60 minutes after task creation by default. Downloads and retries do not extend retention. Deletion stops processing and removes originals, outputs and temporary files. If a process is still stopping, access is revoked immediately and cleanup retries.
 

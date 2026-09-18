@@ -2594,8 +2594,8 @@ footer a {
   min-height: 320px;
   max-height: 68vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   overflow: auto;
   background:
     linear-gradient(45deg, #f0f0f2 25%, transparent 25% 75%, #f0f0f2 75%) 0 0 /
@@ -2607,6 +2607,14 @@ footer a {
   border-radius: 8px;
   padding: 14px;
   position: relative;
+}
+.preview-body.pannable {
+  cursor: grab;
+  touch-action: none;
+}
+.preview-body.panning {
+  cursor: grabbing;
+  user-select: none;
 }
 .preview-image,
 .preview-page,
@@ -2687,6 +2695,40 @@ footer a {
 .preview-document p:first-child {
   margin-top: 0;
 }
+.preview-spreadsheet {
+  align-self: flex-start;
+  min-width: min(720px, 100%);
+  padding: 18px;
+  background: #fff;
+  box-shadow: 0 2px 10px #00000014;
+}
+.preview-spreadsheet > strong {
+  display: block;
+  margin-bottom: 12px;
+  color: #5d5960;
+  font-size: 12px;
+}
+.preview-sheet {
+  width: max-content;
+  min-width: 100%;
+  background: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.preview-sheet th,
+.preview-sheet td {
+  min-width: 90px;
+  max-width: 320px;
+  padding: 7px 10px;
+  border: 1px solid #e5e3e7;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.preview-sheet th {
+  min-width: 42px;
+  width: 42px;
+  background: #f6f5f7;
+  text-align: right;
+}
 .preview-audio {
   width: min(460px, 100%);
 }
@@ -2735,6 +2777,13 @@ footer a {
   gap: 12px;
   margin-top: 18px;
   flex-wrap: wrap;
+}
+.preview-zoom {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: auto;
+  color: #77727a;
 }
 @media (max-width: 640px) {
   .preview-body {
@@ -3306,6 +3355,12 @@ footer a {
   stroke: var(--accent);
   stroke-dasharray: 4 3;
   fill: #962a3b12;
+}
+.mark-hit:focus-visible {
+  outline: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
 }
 .selection-bar {
   display: flex;

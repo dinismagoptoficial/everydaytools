@@ -69,6 +69,30 @@ test("edit existing PDF text and pictures on desktop and mobile", async ({
   await editor.locator(".pdf-picture").first().click();
   await editor.getByRole("button", { name: "Mover ou esticar" }).click();
   await expect(editor.getByText("Objeto selecionado")).toBeVisible();
+  await editor.getByRole("button", { name: "Aumentar zoom" }).click();
+  const object = editor.locator(".mark-hit.selected");
+  const before = await object.boundingBox();
+  expect(before).not.toBeNull();
+  await page.mouse.move(
+    before!.x + before!.width / 2,
+    before!.y + before!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    before!.x + before!.width / 2 + 18,
+    before!.y + before!.height / 2,
+  );
+  await page.mouse.up();
+  const moved = await object.boundingBox();
+  expect(moved).not.toBeNull();
+  expect(moved!.x - before!.x).toBeGreaterThan(15);
+  expect(moved!.x - before!.x).toBeLessThan(21);
+  expect(Math.abs(moved!.y - before!.y)).toBeLessThan(2);
+  await object.focus();
+  await page.keyboard.press("ArrowRight");
+  const nudged = await object.boundingBox();
+  expect(nudged!.x - moved!.x).toBeGreaterThan(0.5);
+  expect(nudged!.x - moved!.x).toBeLessThan(1.5);
 
   await editor.getByRole("button", { name: "Guardar PDF" }).click();
   const row = page.locator(".job-row").filter({ hasText: name });

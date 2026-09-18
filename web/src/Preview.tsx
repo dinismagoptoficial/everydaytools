@@ -5,16 +5,21 @@ import {
   Brush,
   ChevronLeft,
   ChevronRight,
+  Hand,
   LockKeyhole,
+  ZoomIn,
+  ZoomOut,
   X,
 } from "lucide-react";
 import { fileSize, type Job } from "./api";
 import { useText } from "./i18n";
+import type { SheetPreview } from "./spreadsheet";
 
 const IMAGES = ["png", "jpg", "jpeg", "webp", "avif", "gif", "bmp"];
 const VIDEOS = ["mp4", "webm", "mkv", "mov"];
 const AUDIO = ["mp3", "wav", "ogg", "m4a", "aac", "flac"];
-const TEXT = ["txt", "csv", "md"];
+const TEXT = ["txt", "md"];
+const SPREADSHEETS = ["xlsx", "ods", "csv"];
 const TYPES: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -38,6 +43,7 @@ const LIMITS = {
   image: 48 * 1024 ** 2,
   pdf: 64 * 1024 ** 2,
   document: 20 * 1024 ** 2,
+  spreadsheet: 20 * 1024 ** 2,
   video: 120 * 1024 ** 2,
   audio: 120 * 1024 ** 2,
   text: 2 * 1024 ** 2,
@@ -49,6 +55,7 @@ function kind(name: string) {
   if (IMAGES.includes(ext)) return "image";
   if (ext === "pdf") return "pdf";
   if (ext === "docx") return "document";
+  if (SPREADSHEETS.includes(ext)) return "spreadsheet";
   if (VIDEOS.includes(ext)) return "video";
   if (AUDIO.includes(ext)) return "audio";
   if (TEXT.includes(ext)) return "text";
@@ -86,10 +93,24 @@ export default function Preview({
   const [source, setSource] = useState("");
   const [text, setText] = useState("");
   const [documentHtml, setDocumentHtml] = useState("");
+  const [sheet, setSheet] = useState<SheetPreview>();
   const [pdf, setPdf] = useState<Uint8Array>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [imageWidth, setImageWidth] = useState<number>();
+  const [zoom, setZoom] = useState(1);
+  const [panning, setPanning] = useState(false);
+  const viewport = useRef<HTMLDivElement>(null);
+  const pan = useRef<
+    | {
+        pointer: number;
+        x: number;
+        y: number;
+        left: number;
+        top: number;
+      }
+    | undefined
+  >(undefined);
   const type = output ? kind(output.name) : "other";
   const tooLarge = Boolean(output && output.size > LIMITS[type]);
   const path = output
@@ -139,9 +160,11 @@ export default function Preview({
     setSource("");
     setText("");
     setDocumentHtml("");
+    setSheet(undefined);
     setPdf(undefined);
     setError("");
     setImageWidth(undefined);
+    setZoom(1);
     setLoading(true);
     if (type === "other" || tooLarge) {
       setLoading(false);
@@ -157,6 +180,10 @@ export default function Preview({
         if (cancelled) return;
         if (type === "text") {
           setText(new TextDecoder().decode(buffer).slice(0, 200000));
+        } else if (type === "spreadsheet") {
+          const { readSpreadsheet } = await import("./spreadsheet");
+          if (cancelled) return;
+          setSheet(await readSpreadsheet(buffer, output.name));
         } else if (type === "pdf") {
           setPdf(new Uint8Array(buffer));
         } else if (type === "document") {
@@ -193,6 +220,58 @@ export default function Preview({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [job.id, output?.index, output?.size, original, path, tooLarge, type]);
+
+  const canZoom = ["image", "pdf", "document", "spreadsheet", "text"].includes(
+    type,
+  );
+  function changeZoom(next: number) {
+    const target = viewport.current;
+    const value = Math.min(4, Math.max(0.5, Math.round(next * 4) / 4));
+    if (!target || value === zoom) return setZoom(value);
+    const horizontal =
+      (target.scrollLeft + target.clientWidth / 2) /
+      Math.max(1, target.scrollWidth);
+    const vertical =
+      (target.scrollTop + target.clientHeight / 2) /
+      Math.max(1, target.scrollHeight);
+    setZoom(value);
+    requestAnimationFrame(() => {
+      target.scrollLeft =
+        horizontal * target.scrollWidth - target.clientWidth / 2;
+      target.scrollTop =
+        vertical * target.scrollHeight - target.clientHeight / 2;
+    });
+  }
+  function startPan(event: React.PointerEvent<HTMLDivElement>) {
+    if (!canZoom || event.button !== 0) return;
+    if (
+      (event.target as Element).closest(
+        "button,a,input,select,textarea,audio,video",
+      )
+    )
+      return;
+    const target = event.currentTarget;
+    event.preventDefault();
+    pan.current = {
+      pointer: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      left: target.scrollLeft,
+      top: target.scrollTop,
+    };
+    target.setPointerCapture(event.pointerId);
+    setPanning(true);
+  }
+  function movePan(event: React.PointerEvent<HTMLDivElement>) {
+    const held = pan.current;
+    if (!held || held.pointer !== event.pointerId) return;
+    event.currentTarget.scrollLeft = held.left - (event.clientX - held.x);
+    event.currentTarget.scrollTop = held.top - (event.clientY - held.y);
+  }
+  function stopPan() {
+    pan.current = undefined;
+    setPanning(false);
+  }
 
   if (!output) return null;
   return (
@@ -235,7 +314,23 @@ export default function Preview({
               <ChevronLeft size={20} />
             </button>
           )}
-          <div className="preview-body">
+          <div
+            ref={viewport}
+            className={
+              "preview-body " +
+              (canZoom ? "pannable " : "") +
+              (panning ? "panning" : "")
+            }
+            onPointerDown={startPan}
+            onPointerMove={movePan}
+            onPointerUp={stopPan}
+            onPointerCancel={stopPan}
+            onWheel={(event) => {
+              if (!canZoom || (!event.ctrlKey && !event.metaKey)) return;
+              event.preventDefault();
+              changeZoom(zoom + (event.deltaY < 0 ? 0.25 : -0.25));
+            }}
+          >
             {loading && <p className="loading">{t("A abrir…", "Opening…")}</p>}
             {error && <p className="error">{error}</p>}
             {!loading && !error && type === "image" && (
@@ -243,7 +338,7 @@ export default function Preview({
                 className="preview-image"
                 src={source}
                 alt={output.name}
-                style={{ width: imageWidth }}
+                style={{ width: imageWidth, zoom }}
                 onLoad={(event) => {
                   const image = event.currentTarget;
                   const scale = Math.max(
@@ -259,13 +354,31 @@ export default function Preview({
               />
             )}
             {!loading && !error && pdf && (
-              <PdfPreview data={pdf} name={output.name} />
+              <PdfPreview data={pdf} name={output.name} zoom={zoom} />
             )}
             {!loading && !error && type === "document" && (
               <article
                 className="preview-document"
+                style={{ zoom }}
                 dangerouslySetInnerHTML={{ __html: documentHtml }}
               />
+            )}
+            {!loading && !error && type === "spreadsheet" && sheet && (
+              <section className="preview-spreadsheet" style={{ zoom }}>
+                <strong>{sheet.name}</strong>
+                <table className="preview-sheet">
+                  <tbody>
+                    {sheet.rows.map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        <th scope="row">{rowIndex + 1}</th>
+                        {row.map((cell, cellIndex) => (
+                          <td key={cellIndex}>{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
             )}
             {!loading && type === "video" && (
               <video
@@ -284,7 +397,9 @@ export default function Preview({
               />
             )}
             {!loading && type === "text" && (
-              <pre className="preview-text">{text}</pre>
+              <pre className="preview-text" style={{ zoom }}>
+                {text}
+              </pre>
             )}
             {!loading && !error && (type === "other" || tooLarge) && (
               <p className="muted preview-none">
@@ -307,6 +422,37 @@ export default function Preview({
           )}
         </div>
         <div className="preview-actions">
+          {canZoom && !loading && !error && (
+            <div
+              className="preview-zoom"
+              aria-label={t("Zoom e deslocação", "Zoom and pan")}
+            >
+              <Hand size={15} aria-hidden="true" />
+              <button
+                className="icon-btn"
+                disabled={zoom <= 0.5}
+                onClick={() => changeZoom(zoom - 0.25)}
+                aria-label={t("Reduzir zoom", "Zoom out")}
+              >
+                <ZoomOut size={17} />
+              </button>
+              <button
+                className="link zoom-reset"
+                onClick={() => changeZoom(1)}
+                aria-label={t("Repor o zoom", "Reset zoom")}
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button
+                className="icon-btn"
+                disabled={zoom >= 4}
+                onClick={() => changeZoom(zoom + 0.25)}
+                aria-label={t("Aumentar zoom", "Zoom in")}
+              >
+                <ZoomIn size={17} />
+              </button>
+            </div>
+          )}
           {!original &&
             job.operation === "image_background" &&
             type === "image" && (
@@ -330,7 +476,15 @@ export default function Preview({
   );
 }
 
-function PdfPreview({ data, name }: { data: Uint8Array; name: string }) {
+function PdfPreview({
+  data,
+  name,
+  zoom,
+}: {
+  data: Uint8Array;
+  name: string;
+  zoom: number;
+}) {
   const t = useText();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [document, setDocument] = useState<PDFDocumentProxy>();
@@ -434,7 +588,7 @@ function PdfPreview({ data, name }: { data: Uint8Array; name: string }) {
 
   return (
     <div className="pdf-preview" aria-label={name}>
-      <canvas ref={canvas} className="preview-page" />
+      <canvas ref={canvas} className="preview-page" style={{ zoom }} />
       {busy && (
         <span className="rendering">
           {t("A mostrar página…", "Rendering page…")}

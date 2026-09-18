@@ -20,6 +20,7 @@ OPERATIONS = {
     "pdf_compress": (PDF, "MEDIUM", "gs", False),
     "images_pdf": (IMAGES, "MEDIUM", None, True),
     "pdf_images": (PDF, "MEDIUM", None, False),
+    "pdf_word": (PDF, "MEDIUM", None, False),
     "pdf_watermark": (PDF, "LIGHT", None, False),
     "pdf_number": (PDF, "LIGHT", None, False),
     "pdf_protect": (PDF, "LIGHT", None, False),
@@ -61,4 +62,3 @@ def available(dependency):
 def catalog():
     return [{"id": key, "extensions": sorted(ext), "class": cls, "available": available(dep), "batch": batch}
             for key, (ext, cls, dep, batch) in OPERATIONS.items()]
-

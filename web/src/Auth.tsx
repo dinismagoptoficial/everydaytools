@@ -2,15 +2,17 @@ import { useState } from "react";
 import { ArrowRight, ArrowLeft, ShieldCheck } from "lucide-react";
 import { api, type Status } from "./api";
 import Legal, { LegalDialog } from "./Legal";
-import { useError, useText } from "./i18n";
+import { useError, useText, type Language } from "./i18n";
 
 export default function Auth({
   status,
   language,
+  onLanguage,
   onDone,
 }: {
   status: Status;
-  language: "pt-PT" | "en";
+  language: Language;
+  onLanguage: (language: Language) => void;
   onDone: () => void;
 }) {
   const t = useText(),
@@ -32,6 +34,24 @@ export default function Auth({
     [registration, setRegistration] = useState(true);
   const [maxUpload, setMaxUpload] = useState(256),
     [retention, setRetention] = useState(60);
+  const firstProvider = status.mail_providers.gmail ||
+    Object.values(status.mail_providers)[0] || {
+      host: "",
+      port: 587,
+      security: "starttls",
+      hint: {},
+    };
+  const [smtpEnabled, setSmtpEnabled] = useState(false);
+  const [smtp, setSmtp] = useState({
+    provider: status.mail_providers.gmail ? "gmail" : "custom",
+    host: firstProvider.host,
+    port: firstProvider.port,
+    security: firstProvider.security,
+    user: "",
+    password: "",
+    sender: "",
+    public_url: location.origin,
+  });
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [sent, setSent] = useState(false);
@@ -44,7 +64,16 @@ export default function Auth({
       return;
     }
     if (mode === "setup" && step === 2) {
+      setSmtp((current) => ({
+        ...current,
+        user: current.user || email,
+        sender: current.sender || email,
+      }));
       setStep(3);
+      return;
+    }
+    if (mode === "setup" && step === 3) {
+      setStep(4);
       return;
     }
     if (
@@ -67,6 +96,7 @@ export default function Auth({
               retention_minutes: retention,
               legal_version: legalVersion,
               language,
+              smtp: smtpEnabled ? smtp : null,
             }
           : mode === "reset"
             ? { token, password }
@@ -133,8 +163,8 @@ export default function Auth({
         {mode === "setup" && (
           <div className="eyebrow">
             {t(
-              `CONFIGURAÇÃO INICIAL · ${step} / 3`,
-              `INITIAL SETUP · ${step} / 3`,
+              `CONFIGURAÇÃO INICIAL · ${step} / 4`,
+              `INITIAL SETUP · ${step} / 4`,
             )}
           </div>
         )}
@@ -239,6 +269,24 @@ export default function Auth({
                   onChange={(e) => setName(e.target.value)}
                 />
               </label>
+              <label>
+                {t("Idioma principal", "Main language")}
+                <select
+                  value={language}
+                  onChange={(event) =>
+                    onLanguage(event.target.value as Language)
+                  }
+                >
+                  <option value="pt-PT">Português</option>
+                  <option value="en">English</option>
+                </select>
+                <small>
+                  {t(
+                    "Cada pessoa pode escolher outro idioma na sua conta.",
+                    "Each person can choose another language in their account.",
+                  )}
+                </small>
+              </label>
               <div className="form-grid">
                 <label>
                   {t("Limite de upload (MB)", "Upload limit (MB)")}
@@ -282,6 +330,157 @@ export default function Auth({
           )}
           {mode === "setup" && step === 3 && (
             <>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={smtpEnabled}
+                  onChange={(event) => setSmtpEnabled(event.target.checked)}
+                />
+                {t(
+                  "Configurar recuperação por e-mail agora",
+                  "Configure email recovery now",
+                )}
+              </label>
+              {smtpEnabled && (
+                <>
+                  <div className="form-grid">
+                    <label>
+                      {t("Serviço", "Service")}
+                      <select
+                        value={smtp.provider}
+                        onChange={(event) => {
+                          const provider =
+                            status.mail_providers[event.target.value];
+                          setSmtp({
+                            ...smtp,
+                            provider: event.target.value,
+                            host:
+                              event.target.value === "custom"
+                                ? smtp.host
+                                : provider.host,
+                            port:
+                              event.target.value === "custom"
+                                ? smtp.port
+                                : provider.port,
+                            security:
+                              event.target.value === "custom"
+                                ? smtp.security
+                                : provider.security,
+                          });
+                        }}
+                      >
+                        {Object.entries(status.mail_providers).map(
+                          ([id, provider]) => (
+                            <option key={id} value={id}>
+                              {id === "custom"
+                                ? t("Outro servidor", "Other server")
+                                : provider.label}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                    <label>
+                      {t("Endereço do remetente", "Sender address")}
+                      <input
+                        type="email"
+                        required
+                        value={smtp.sender}
+                        onChange={(event) =>
+                          setSmtp({ ...smtp, sender: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t("Servidor", "Server")}
+                      <input
+                        required
+                        value={smtp.host}
+                        onChange={(event) =>
+                          setSmtp({ ...smtp, host: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t("Porta", "Port")}
+                      <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        required
+                        value={smtp.port}
+                        onChange={(event) =>
+                          setSmtp({ ...smtp, port: +event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t("Ligação", "Connection")}
+                      <select
+                        value={smtp.security}
+                        onChange={(event) =>
+                          setSmtp({ ...smtp, security: event.target.value })
+                        }
+                      >
+                        <option value="starttls">STARTTLS</option>
+                        <option value="ssl">SSL/TLS</option>
+                        <option value="none">
+                          {t("Sem cifra", "No encryption")}
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      {t("Utilizador", "Username")}
+                      <input
+                        value={smtp.user}
+                        autoComplete="off"
+                        onChange={(event) =>
+                          setSmtp({ ...smtp, user: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t("Palavra-passe de aplicação", "App password")}
+                      <input
+                        type="password"
+                        value={smtp.password}
+                        autoComplete="new-password"
+                        onChange={(event) =>
+                          setSmtp({ ...smtp, password: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t("Endereço da instalação", "Installation address")}
+                      <input
+                        type="url"
+                        required
+                        value={smtp.public_url}
+                        onChange={(event) =>
+                          setSmtp({ ...smtp, public_url: event.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                  {status.mail_providers[smtp.provider]?.hint?.[language] && (
+                    <p className="notice">
+                      {status.mail_providers[smtp.provider].hint[language]}
+                    </p>
+                  )}
+                </>
+              )}
+              {!smtpEnabled && (
+                <p className="notice">
+                  {t(
+                    "Podes configurar o e-mail mais tarde no painel de administração.",
+                    "You can configure email later in the administration panel.",
+                  )}
+                </p>
+              )}
+            </>
+          )}
+          {mode === "setup" && step === 4 && (
+            <>
               <Legal onReady={setLegalVersion} />
               <label className="check">
                 <input
@@ -318,7 +517,7 @@ export default function Auth({
             {busy
               ? t("A aguardar…", "Please wait…")
               : mode === "setup"
-                ? step < 3
+                ? step < 4
                   ? t("Continuar", "Continue")
                   : t("Começar a utilizar", "Start using Everyday Tools")
                 : mode === "register"

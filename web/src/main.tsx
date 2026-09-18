@@ -444,7 +444,12 @@ function Application({
     return (
       <>
         <div className="auth-language">{languageSelector}</div>
-        <Auth status={status} language={lang} onDone={bootstrap} />
+        <Auth
+          status={status}
+          language={lang}
+          onLanguage={setLang}
+          onDone={bootstrap}
+        />
         {error && (
           <div className="toast" role="alert">
             {errorText(error)}

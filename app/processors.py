@@ -237,6 +237,59 @@ def render_page(path, index, password="", scale=1.5):
             page.close()
 
 
+def pdf_to_word(reader, path, output, options):
+    from docx import Document
+    from docx.shared import Inches, Pt
+
+    document = Document()
+    normal = document.styles["Normal"]
+    normal.font.name = "Arial"
+    normal.font.size = Pt(10.5)
+    first = True
+    total_images = 0
+    for index in page_selection(options.get("pages"), len(reader.pages)):
+        if not first:
+            document.add_page_break()
+        page = reader.pages[index]
+        text = page.extract_text(extraction_mode="layout") or ""
+        lines = [line.rstrip() for line in text.splitlines()]
+        if any(line.strip() for line in lines):
+            paragraph = document.add_paragraph()
+            for line_index, line in enumerate(lines):
+                if line_index:
+                    paragraph.add_run().add_break()
+                paragraph.add_run(line)
+        else:
+            with render_page(path, index, str(options.get("password", "")), scale=1.5) as image:
+                buffer = io.BytesIO()
+                image.convert("RGB").save(buffer, "PNG", optimize=True)
+                buffer.seek(0)
+                paragraph = document.add_paragraph()
+                paragraph.add_run().add_picture(buffer, width=Inches(6.3))
+            first = False
+            continue
+
+        image_count = 0
+        for embedded in page.images:
+            if image_count >= 50 or total_images >= 200:
+                break
+            try:
+                with Image.open(io.BytesIO(embedded.data)) as image:
+                    if image.width * image.height > Image.MAX_IMAGE_PIXELS:
+                        continue
+                    buffer = io.BytesIO()
+                    image.convert("RGB").save(buffer, "PNG", optimize=True)
+                    buffer.seek(0)
+                    width = min(6.3, max(0.5, image.width / 120))
+                    document.add_picture(buffer, width=Inches(width))
+                    image_count += 1
+                    total_images += 1
+            except Exception:
+                continue
+        first = False
+    document.save(output / "document.docx")
+
+
 def annotation_rect(a, width, height):
     x = number(a, "x", 0, 0, 1) * width
     y = number(a, "y", 0, 0, 1) * height
@@ -391,6 +444,9 @@ def pdf_jobs(paths, output, op, options):
             for page in reader.pages:
                 out.write((page.extract_text() or "") + "\n")
         return
+    if op == "pdf_word":
+        pdf_to_word(reader, paths[0], output, options)
+        return
     if op == "pdf_extract_images":
         count = 0
         for pi, page in enumerate(reader.pages):
@@ -403,9 +459,12 @@ def pdf_jobs(paths, output, op, options):
             raise ValueError("no_images")
         return
     if op == "pdf_images":
+        fmt = choice(options, "format", "png", {"png", "jpg", "webp"})
+        dpi = int(number(options, "dpi", 144, 72, 300))
+        quality = number(options, "quality", 90, 1, 100)
         for i in page_selection(options.get("pages"), len(reader.pages)):
-            with render_page(paths[0], i, str(options.get("password", ""))) as im:
-                im.save(output / f"page-{i+1}.png")
+            with render_page(paths[0], i, str(options.get("password", "")), dpi / 72) as im:
+                write_image(im, output / f"page-{i+1}.{fmt}", fmt, quality)
         return
     if op == "pdf_compress":
         preset = choice(options, "preset", "balanced", {"quality", "balanced", "small"})

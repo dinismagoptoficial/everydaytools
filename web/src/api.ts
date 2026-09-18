@@ -15,8 +15,16 @@ export type Status = {
   max_upload_mb: number;
   smtp: boolean;
   language: "pt-PT" | "en";
+  mail_providers: Record<string, MailProvider>;
   version: string;
   legal_version: string;
+};
+export type MailProvider = {
+  label: string;
+  host: string;
+  port: number;
+  security: string;
+  hint: Record<string, string>;
 };
 export type Tool = {
   id: string;

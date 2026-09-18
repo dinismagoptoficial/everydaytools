@@ -64,6 +64,7 @@ export default function PdfEditor({
   const t = useText();
   const canvas = useRef<HTMLCanvasElement>(null),
     area = useRef<HTMLDivElement>(null),
+    overlay = useRef<SVGSVGElement>(null),
     fileInput = useRef<HTMLInputElement>(null);
   const [doc, setDoc] = useState<PDFDocumentProxy>(),
     [page, setPage] = useState(1),
@@ -90,13 +91,19 @@ export default function PdfEditor({
   const [picked, setPicked] = useState(-1);
   const [zoom, setZoom] = useState(1);
   const [pageScale, setPageScale] = useState(1);
-  const grab = useRef<{ index: number; x: number; y: number } | null>(null);
+  const grab = useRef<{
+    index: number;
+    x: number;
+    y: number;
+    pointer: number;
+  } | null>(null);
   const resize = useRef<{
     index: number;
     corner: string;
     start: Mark;
     px: number;
     py: number;
+    pointer: number;
   } | null>(null);
   const swapPicture = useRef(-1);
   const actionCount = useRef(0);
@@ -460,13 +467,14 @@ export default function PdfEditor({
 
   function startResize(e: React.PointerEvent, index: number, corner: string) {
     e.stopPropagation();
-    const box = area.current!.getBoundingClientRect();
+    const [px, py] = pagePoint(e);
     resize.current = {
       index,
       corner,
       start: marks[index],
-      px: (e.clientX - box.left) / box.width,
-      py: (e.clientY - box.top) / box.height,
+      px,
+      py,
+      pointer: e.pointerId,
     };
     setSelected(index);
     capture(e);
@@ -474,10 +482,10 @@ export default function PdfEditor({
 
   function dragResize(e: React.PointerEvent) {
     const held = resize.current;
-    if (!held) return;
-    const box = area.current!.getBoundingClientRect();
-    const dx = (e.clientX - box.left) / box.width - held.px;
-    const dy = (e.clientY - box.top) / box.height - held.py;
+    if (!held || held.pointer !== e.pointerId) return;
+    const [px, py] = pagePoint(e);
+    const dx = px - held.px;
+    const dy = py - held.py;
     const start = held.corner;
     const from = held.start;
     let { x, y, w, h } = from;
@@ -500,6 +508,10 @@ export default function PdfEditor({
       if (start.includes("n")) y = from.y + from.h - least;
       h = least;
     }
+    x = Math.min(Math.max(x, 0), 1 - least);
+    y = Math.min(Math.max(y, 0), 1 - least);
+    w = Math.min(w, 1 - x);
+    h = Math.min(h, 1 - y);
     // Words keep their proportions: a taller box means bigger letters.
     const grown = from.h > 0 ? h / from.h : 1;
     setMarks((list) =>
@@ -520,7 +532,17 @@ export default function PdfEditor({
     );
   }
 
-  function point(e: React.PointerEvent) {
+  function pagePoint(e: React.PointerEvent) {
+    const matrix = overlay.current?.getScreenCTM();
+    if (matrix) {
+      const value = new DOMPoint(e.clientX, e.clientY).matrixTransform(
+        matrix.inverse(),
+      );
+      return [
+        Math.max(0, Math.min(1, value.x / dimensions.w)),
+        Math.max(0, Math.min(1, value.y / dimensions.h)),
+      ];
+    }
     const r = area.current!.getBoundingClientRect();
     return [
       Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
@@ -543,7 +565,7 @@ export default function PdfEditor({
       return;
     }
     e.currentTarget.setPointerCapture(e.pointerId);
-    const [x, y] = point(e);
+    const [x, y] = pagePoint(e);
     setError("");
     const mark: Mark = {
       page,
@@ -563,7 +585,7 @@ export default function PdfEditor({
   }
   function move(e: React.PointerEvent) {
     if (!current) return;
-    const [x, y] = point(e);
+    const [x, y] = pagePoint(e);
     if (current.type === "draw") {
       setCurrent({
         ...current,
@@ -969,6 +991,7 @@ export default function PdfEditor({
               </div>
             )}
             <svg
+              ref={overlay}
               className="annotation-layer"
               viewBox={`0 0 ${dimensions.w} ${dimensions.h}`}
             >
@@ -1084,38 +1107,84 @@ export default function PdfEditor({
                     y={y}
                     width={w}
                     height={h}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={t("Objeto editável", "Editable object")}
                     onPointerDown={(event) => {
                       event.stopPropagation();
                       setSelected(index);
-                      const box = area.current!.getBoundingClientRect();
+                      const [px, py] = pagePoint(event);
                       grab.current = {
                         index,
-                        x: (event.clientX - box.left) / box.width - m.x,
-                        y: (event.clientY - box.top) / box.height - m.y,
+                        x: px - m.x,
+                        y: py - m.y,
+                        pointer: event.pointerId,
                       };
                       capture(event);
                     }}
                     onPointerMove={(event) => {
                       const held = grab.current;
-                      if (!held) return;
-                      const box = area.current!.getBoundingClientRect();
-                      const nx =
-                        (event.clientX - box.left) / box.width - held.x;
-                      const ny =
-                        (event.clientY - box.top) / box.height - held.y;
+                      if (!held || held.pointer !== event.pointerId) return;
+                      const [px, py] = pagePoint(event);
+                      const nx = px - held.x;
+                      const ny = py - held.y;
                       setMarks((list) =>
                         list.map((item, at) =>
                           at === held.index
                             ? {
                                 ...item,
-                                x: Math.min(Math.max(nx, 0), 1),
-                                y: Math.min(Math.max(ny, 0), 1),
+                                x: Math.min(
+                                  Math.max(nx, 0),
+                                  Math.max(0, 1 - item.w),
+                                ),
+                                y: Math.min(
+                                  Math.max(ny, 0),
+                                  Math.max(0, 1 - item.h),
+                                ),
+                              }
+                            : item,
+                        ),
+                      );
+                    }}
+                    onKeyDown={(event) => {
+                      const direction: Record<string, [number, number]> = {
+                        ArrowLeft: [-1, 0],
+                        ArrowRight: [1, 0],
+                        ArrowUp: [0, -1],
+                        ArrowDown: [0, 1],
+                      };
+                      const delta = direction[event.key];
+                      if (!delta) return;
+                      event.preventDefault();
+                      const amount = event.shiftKey ? 10 : 1;
+                      const dx =
+                        (delta[0] * amount) /
+                        Math.max(1, dimensions.w * pageScale);
+                      const dy =
+                        (delta[1] * amount) /
+                        Math.max(1, dimensions.h * pageScale);
+                      setMarks((list) =>
+                        list.map((item, at) =>
+                          at === index
+                            ? {
+                                ...item,
+                                x: Math.min(
+                                  Math.max(item.x + dx, 0),
+                                  Math.max(0, 1 - item.w),
+                                ),
+                                y: Math.min(
+                                  Math.max(item.y + dy, 0),
+                                  Math.max(0, 1 - item.h),
+                                ),
                               }
                             : item,
                         ),
                       );
                     }}
                     onPointerUp={() => {
+                      grab.current = null;
+                    }}
+                    onPointerCancel={() => {
                       grab.current = null;
                     }}
                   />

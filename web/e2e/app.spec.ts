@@ -28,6 +28,10 @@ test("setup, local tools, upload, conversion, download, deletion and mobile", as
     await page.getByRole("button", { name: "Continuar", exact: true }).click();
     await expect(page.getByLabel("Retenção (minutos)")).toHaveValue("60");
     await page.getByRole("button", { name: "Continuar", exact: true }).click();
+    await expect(
+      page.getByText("Configurar recuperação por e-mail agora"),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
     await page.getByText("Condições de utilização", { exact: true }).click();
     await expect(
       page.getByText("Privacidade e retenção", { exact: true }),
@@ -99,6 +103,53 @@ test("setup, local tools, upload, conversion, download, deletion and mobile", as
     .getByRole("button", { name: "Eliminar agora", exact: true })
     .click();
   await expect(page.getByText(fileName, { exact: true })).toHaveCount(0);
+
+  const sheetName = `sheet-${Date.now()}.csv`;
+  const sheet = Buffer.from(
+    "Name,Value,Notes,One,Two,Three,Four,Five,Six,Seven,Eight,Nine\nEveryday Tools,42,Spreadsheet preview,a,b,c,d,e,f,g,h,i\n",
+  );
+  await page.locator("input[type=file]").setInputFiles({
+    name: sheetName,
+    mimeType: "text/csv",
+    buffer: sheet,
+  });
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /Converter folha de cálculo/ })
+    .click();
+  await page.getByRole("button", { name: "Processar ficheiro" }).click();
+  const sheetRow = page.locator(".job-row").filter({ hasText: sheetName });
+  await expect(sheetRow.getByText("Concluído", { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+  await sheetRow.getByRole("button", { name: "Pré-visualizar" }).click();
+  await expect(page.locator(".preview-sheet")).toContainText("Everyday Tools");
+  const zoomIn = page.getByRole("button", { name: "Aumentar zoom" });
+  await zoomIn.click();
+  await zoomIn.click();
+  await zoomIn.click();
+  await zoomIn.click();
+  await expect(page.getByRole("button", { name: "Repor o zoom" })).toHaveText(
+    "200%",
+  );
+  const previewBody = page.locator(".preview-body");
+  const previewBox = await previewBody.boundingBox();
+  expect(previewBox).not.toBeNull();
+  await page.mouse.move(
+    previewBox!.x + previewBox!.width * 0.7,
+    previewBox!.y + 100,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    previewBox!.x + previewBox!.width * 0.3,
+    previewBox!.y + 100,
+  );
+  await page.mouse.up();
+  expect(await previewBody.evaluate((node) => node.scrollLeft)).toBeGreaterThan(
+    0,
+  );
+  await page.getByRole("button", { name: "Fechar" }).click();
+
   await page.getByRole("button", { name: "Início", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   // A closed mobile menu must leave the accessibility tree, not just slide off screen.

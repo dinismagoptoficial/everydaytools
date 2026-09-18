@@ -102,6 +102,34 @@ class Registration(Credentials):
     language: Literal["pt-PT", "en"] = "pt-PT"
 
 
+class MailSettings(BaseModel):
+    provider: Literal[tuple(mail.PROVIDERS)] = "custom"
+    host: str = Field(default="", max_length=255)
+    port: int = Field(default=587, ge=1, le=65535)
+    security: Literal["starttls", "ssl", "none"] = "starttls"
+    user: str = Field(default="", max_length=255)
+    password: str = Field(default="", max_length=255)
+    sender: str = Field(default="", max_length=254)
+    public_url: str = Field(default="", max_length=255)
+
+
+def validate_mail_settings(body: MailSettings):
+    if body.public_url:
+        address = urlparse(body.public_url)
+        if address.scheme not in ("http", "https") or not address.netloc:
+            raise HTTPException(400, "invalid_option")
+    if body.sender:
+        security.email_address(body.sender)
+    if any("\r" in value or "\n" in value for value in (body.host, body.user)):
+        raise HTTPException(400, "invalid_option")
+
+
+def mail_settings_values(body: MailSettings):
+    return {"smtp_provider": body.provider, "smtp_host": body.host.strip(), "smtp_port": body.port,
+            "smtp_security": body.security, "smtp_user": body.user.strip(),
+            "smtp_from": body.sender.strip().lower(), "smtp_public_url": body.public_url.strip().rstrip("/")}
+
+
 class Setup(Credentials):
     legal_version: Literal[legal.VERSION]
     installation_name: str = Field(default="Everyday Tools", min_length=1, max_length=60)
@@ -109,6 +137,7 @@ class Setup(Credentials):
     max_upload_mb: int = Field(default=256, ge=1, le=10240)
     retention_minutes: int = Field(default=60, ge=5, le=1440)
     language: Literal["pt-PT", "en"] = "pt-PT"
+    smtp: MailSettings | None = None
 
 
 class Preferences(BaseModel):
@@ -148,6 +177,7 @@ def status():
     return {"setup": setup, "name": prefs["installation_name"], "registration": prefs["registration"],
             "retention_minutes": prefs["retention_minutes"], "max_upload_mb": prefs["max_upload_mb"],
             "smtp": mail.available(), "language": prefs["default_language"],
+            "mail_providers": mail.PROVIDERS,
             "version": __version__, "legal_version": legal.VERSION}
 
 
@@ -162,6 +192,10 @@ def health():
 def setup(body: Setup, request: Request, response: Response):
     security.rate_limit("setup:" + security.ip(request), 5, 60)
     email, hashed = security.email_address(body.email), security.password_hash(body.password)
+    if body.smtp:
+        validate_mail_settings(body.smtp)
+        if not body.smtp.host.strip() or not body.smtp.sender.strip():
+            raise HTTPException(400, "smtp_unavailable")
     with connect(True) as db:
         if db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             raise HTTPException(409, "already_setup")
@@ -171,6 +205,11 @@ def setup(body: Setup, request: Request, response: Response):
             db.execute("UPDATE settings SET value=? WHERE key=?", (json.dumps(getattr(body, key)), key))
         db.execute("UPDATE settings SET value=? WHERE key='default_language'", (json.dumps(body.language),))
         db.execute("INSERT OR REPLACE INTO user_preferences VALUES (?,?,?)", (uid, "", body.language))
+        if body.smtp:
+            for key, value in mail_settings_values(body.smtp).items():
+                db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, json.dumps(value)))
+            db.execute("INSERT OR REPLACE INTO settings VALUES ('smtp_password',?)",
+                       (json.dumps(body.smtp.password),))
         for key, value in (("legal_version", body.legal_version), ("legal_reviewed_at", time.time())):
             db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, json.dumps(value)))
         security.new_session(db, response, uid, request)
@@ -542,24 +581,6 @@ def admin_settings(body: Preferences, user=Depends(security.admin)):
     return {"ok": True}
 
 
-class MailSettings(BaseModel):
-    provider: Literal[tuple(mail.PROVIDERS)] = "custom"
-    host: str = Field(default="", max_length=255)
-    port: int = Field(default=587, ge=1, le=65535)
-    security: Literal["starttls", "ssl", "none"] = "starttls"
-    user: str = Field(default="", max_length=255)
-    password: str = Field(default="", max_length=255)
-    sender: str = Field(default="", max_length=254)
-    public_url: str = Field(default="", max_length=255)
-
-
-def validate_mail_settings(body: MailSettings):
-    if body.public_url and urlparse(body.public_url).scheme not in ("http", "https"):
-        raise HTTPException(400, "invalid_option")
-    if body.sender:
-        security.email_address(body.sender)
-
-
 @app.get("/api/admin/smtp")
 def admin_mail(user=Depends(security.admin)):
     return {"providers": mail.PROVIDERS, "settings": mail.configuration()}
@@ -568,9 +589,7 @@ def admin_mail(user=Depends(security.admin)):
 @app.put("/api/admin/smtp")
 def admin_mail_save(body: MailSettings, user=Depends(security.admin)):
     validate_mail_settings(body)
-    values = {"smtp_provider": body.provider, "smtp_host": body.host.strip(), "smtp_port": body.port,
-              "smtp_security": body.security, "smtp_user": body.user.strip(),
-              "smtp_from": body.sender.strip().lower(), "smtp_public_url": body.public_url.strip().rstrip("/")}
+    values = mail_settings_values(body)
     with connect(True) as db:
         for key, value in values.items():
             db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, json.dumps(value)))

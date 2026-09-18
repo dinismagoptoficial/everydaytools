@@ -3,6 +3,7 @@ import email
 import socket
 import threading
 
+from app.legal import VERSION
 from conftest import authenticate
 
 CONFIGURED = {"provider": "custom", "host": "127.0.0.1", "port": 0, "security": "none",
@@ -82,6 +83,27 @@ def configure(client, sink, **overrides):
 def plain(message):
     return "".join(part.get_payload(decode=True).decode("utf-8", "replace")
                    for part in message.walk() if part.get_content_type() == "text/plain").strip()
+
+
+def test_initial_setup_can_store_smtp_and_send_the_welcome_message(client):
+    sink = Sink()
+    try:
+        smtp = CONFIGURED | {"port": sink.port, "public_url": "http://everyday-tools.local"}
+        response = client.post("/api/setup", json={
+            "email": "admin@example.test", "password": "good-test-password",
+            "legal_version": VERSION, "language": "en", "smtp": smtp,
+        })
+        assert response.status_code == 200, response.text
+        welcome = sink.wait()[0]
+        assert welcome["To"] == "admin@example.test"
+        assert "account was created successfully" in plain(welcome)
+        assert client.get("/api/status").json()["smtp"] is True
+        saved = client.get("/api/admin/smtp").json()["settings"]
+        assert saved["smtp_host"] == "127.0.0.1"
+        assert saved["smtp_public_url"] == "http://everyday-tools.local"
+        assert saved["password_set"] is False
+    finally:
+        sink.close()
 
 
 def test_test_button_delivers_without_an_installation_address(admin_client):

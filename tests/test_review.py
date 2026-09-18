@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
+from docx import Document
 
 from app import config, storage
 from app.db import connect
@@ -114,6 +115,25 @@ def test_repeated_pdf_pages_do_not_accumulate_rotation(tmp_path, pdf_bytes):
     pdf_jobs([path], output, 'pdf_rotate', {'pages': '1,1', 'angle': 90})
     result = PdfReader(output / 'document.pdf')
     assert [page.rotation for page in result.pages] == [90, 90]
+
+
+def test_pdf_exports_to_editable_word_and_selected_image_format(tmp_path, pdf_bytes):
+    path = tmp_path / 'input.pdf'
+    path.write_bytes(pdf_bytes)
+    word = tmp_path / 'word'
+    word.mkdir()
+    pdf_jobs([path], word, 'pdf_word', {})
+    document = Document(word / 'document.docx')
+    content = '\n'.join(paragraph.text for paragraph in document.paragraphs)
+    assert 'Private text on first page' in content
+    assert 'Second page' in content
+
+    images = tmp_path / 'images'
+    images.mkdir()
+    pdf_jobs([path], images, 'pdf_images', {'format': 'jpg', 'dpi': 96, 'pages': '2'})
+    assert [item.name for item in images.iterdir()] == ['page-2.jpg']
+    with Image.open(images / 'page-2.jpg') as converted:
+        assert converted.format == 'JPEG'
 
 
 def test_cropped_pdf_redaction_uses_visible_page(tmp_path, pdf_bytes):
