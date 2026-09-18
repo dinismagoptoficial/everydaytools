@@ -60,6 +60,7 @@ export default function MatteEditor({
   const frame = useRef(0);
   const backgroundInput = useRef<HTMLInputElement>(null);
   const stage = useRef<HTMLDivElement>(null);
+  const cursorRef = useRef<HTMLSpanElement>(null);
 
   const [ready, setReady] = useState(false),
     [error, setError] = useState("");
@@ -69,24 +70,12 @@ export default function MatteEditor({
   const [size, setSize] = useState(45),
     [canUndo, setCanUndo] = useState(false),
     [saving, setSaving] = useState(false);
-  const [cursor, setCursor] = useState({
-    x: 0,
-    y: 0,
-    diameter: 0,
-    visible: false,
-  });
 
   const output = job.outputs[index];
   const sourceIndex = Math.max(
     0,
     Number(output?.name.match(/^image-(\d+)\./)?.[1] ?? 1) - 1,
   );
-  const previewScale = ready
-    ? Math.max(
-        1,
-        Math.min(3, 420 / Math.max(mask.current.width, mask.current.height)),
-      )
-    : 1;
 
   function setInitialMask(
     image: HTMLImageElement,
@@ -247,8 +236,10 @@ export default function MatteEditor({
       (window.innerHeight * 0.52) / mask.current.height,
       1,
     );
-    canvas.style.width = Math.max(1, Math.round(mask.current.width * scale)) + "px";
-    canvas.style.height = Math.max(1, Math.round(mask.current.height * scale)) + "px";
+    canvas.style.width =
+      Math.max(1, Math.round(mask.current.width * scale)) + "px";
+    canvas.style.height =
+      Math.max(1, Math.round(mask.current.height * scale)) + "px";
     render();
   }
 
@@ -297,15 +288,16 @@ export default function MatteEditor({
   }
 
   function updateCursor(event: React.PointerEvent, visible = true) {
-    const canvasBox = view.current!.getBoundingClientRect();
-    const stageBox = stage.current!.getBoundingClientRect();
+    const ring = cursorRef.current;
+    if (!ring || !view.current || !stage.current) return;
+    const canvasBox = view.current.getBoundingClientRect();
+    const stageBox = stage.current.getBoundingClientRect();
     const diameter = brushRadius() * 2 * (canvasBox.width / mask.current.width);
-    setCursor({
-      x: event.clientX - stageBox.left,
-      y: event.clientY - stageBox.top,
-      diameter,
-      visible,
-    });
+    ring.style.width = diameter + "px";
+    ring.style.height = diameter + "px";
+    ring.style.left = event.clientX - stageBox.left + "px";
+    ring.style.top = event.clientY - stageBox.top + "px";
+    ring.style.opacity = visible ? "1" : "0";
   }
 
   function stroke(from: [number, number] | null, to: [number, number]) {
@@ -533,29 +525,22 @@ export default function MatteEditor({
           <canvas
             ref={view}
             className="matte-canvas"
-            style={{ width: mask.current.width * previewScale }}
             onPointerDown={down}
             onPointerMove={move}
             onPointerUp={up}
             onPointerCancel={up}
             onPointerEnter={(event) => updateCursor(event)}
-            onPointerLeave={() =>
-              !drawing.current &&
-              setCursor((value) => ({ ...value, visible: false }))
+            onPointerLeave={(event) =>
+              !drawing.current && updateCursor(event, false)
             }
             hidden={!ready}
           />
-          {cursor.visible && ready && (
-            <span
-              className={"brush-cursor " + tool}
-              style={{
-                left: cursor.x,
-                top: cursor.y,
-                width: cursor.diameter,
-                height: cursor.diameter,
-              }}
-            />
-          )}
+          <span
+            ref={cursorRef}
+            className={"brush-cursor " + tool}
+            style={{ opacity: 0 }}
+            aria-hidden="true"
+          />
         </div>
         <div className="matte-backgrounds">
           <span>{t("Fundo", "Background")}</span>

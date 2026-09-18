@@ -222,3 +222,12 @@ def test_recovery_needs_a_configured_sender(client):
     authenticate(client)
     assert client.post("/api/recover", json={"email": "admin@example.test"}).status_code == 400
     assert client.get("/api/status").json()["smtp"] is False
+
+
+def test_previews_may_play_local_media(admin_client):
+    """Audio and video previews read from blob URLs, which need media-src."""
+    policy = admin_client.get("/api/jobs").headers["content-security-policy"]
+    assert "media-src 'self' blob:" in policy
+    # Nothing remote may be reached even so.
+    assert "default-src 'self'" in policy
+    assert "https://" not in policy
