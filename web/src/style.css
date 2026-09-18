@@ -3122,3 +3122,114 @@ footer a {
     animation: none;
   }
 }
+
+.brand-mark {
+  /* Discourages the casual drag or long press. Anything a browser renders can
+     still be captured, so this is friction, not protection. */
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  pointer-events: none;
+}
+
+/* Touch and pointer feedback -------------------------------------------------
+   Browsers wait about 300ms before firing a click on touch unless the element
+   opts out, which is most of what makes a web app feel slower than a native
+   one. Pressing anything also needs to answer straight away. */
+button,
+a,
+summary,
+label.check,
+input[type="checkbox"],
+input[type="radio"],
+select {
+  touch-action: manipulation;
+}
+.primary:active:not(:disabled),
+.secondary:active:not(:disabled),
+.tool-card:active:not(:disabled),
+.compatible-list button:active,
+.swatch:active,
+.preview-step:active:not(:disabled) {
+  transform: scale(0.982);
+}
+.icon-btn:active:not(:disabled),
+.matte-tool:active:not(:disabled),
+.editor-tool:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.nav-item:active {
+  transform: translateX(1px);
+}
+.primary,
+.secondary,
+.icon-btn,
+.nav-item,
+.matte-tool,
+.editor-tool,
+.swatch,
+.preview-step,
+.compatible-list button,
+.filter-tabs button {
+  transition:
+    background var(--motion),
+    color var(--motion),
+    border-color var(--motion),
+    transform 90ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.tool-card {
+  will-change: auto;
+}
+.tool-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+/* Long lists only pay layout for what is on screen. */
+.tool-grid,
+.job-list,
+.compatible-list {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+/* Results and rows settle in instead of snapping into place. */
+.job-row {
+  animation: row-in var(--motion) both;
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Touch pointers get a larger hit area without changing the visual size. */
+@media (pointer: coarse) {
+  .icon-btn {
+    width: 42px;
+    height: 42px;
+  }
+  .link {
+    padding: 8px 0;
+  }
+  .filter-tabs button {
+    min-height: 40px;
+  }
+  .text-run {
+    min-height: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-row {
+    animation: none;
+  }
+  .primary:active:not(:disabled),
+  .secondary:active:not(:disabled),
+  .tool-card:active:not(:disabled),
+  .tool-card:hover:not(:disabled),
+  .icon-btn:active:not(:disabled),
+  .nav-item:active {
+    transform: none;
+  }
+}

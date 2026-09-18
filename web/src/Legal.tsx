@@ -141,7 +141,7 @@ export default function Legal({
   return (
     <div className={`legal-content ${variant}`}>
       <div className="legal-overview">
-        <img src="/logo.png" alt="" />
+        <img src="/logo.png" alt="" className="brand-mark" draggable={false} />
         <div>
           <strong>Everyday Tools</strong>
           <p>

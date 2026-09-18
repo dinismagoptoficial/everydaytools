@@ -89,7 +89,7 @@ export default function Auth({
     <div className="auth-wrap">
       <div className="auth-intro">
         <div className="brand large">
-          <img src="/logo.png" alt="" />
+          <img src="/logo.png" alt="" className="brand-mark" draggable={false} />
           <span>Everyday Tools</span>
         </div>
         <p>Your digital Swiss Army knife.</p>

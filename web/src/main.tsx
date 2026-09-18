@@ -368,7 +368,7 @@ function Application({
   if (!loaded)
     return (
       <div className="initial-loading">
-        <img src="/logo.png" alt="Everyday Tools" />
+        <img src="/logo.png" alt="Everyday Tools" className="brand-mark" draggable={false} />
         <LoaderCircle className="spin" />
       </div>
     );
@@ -406,7 +406,7 @@ function Application({
         className={"sidebar " + (mobile ? "open" : "")}
       >
         <button className="brand" onClick={() => navigate("home")}>
-          <img src="/logo.png" alt="" />
+          <img src="/logo.png" alt="" className="brand-mark" draggable={false} />
           <span>
             Everyday<span className="brand-second">Tools</span>
           </span>
