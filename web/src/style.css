@@ -1618,10 +1618,16 @@ table .link {
   min-width: 0;
   overflow: auto;
   padding: 25px;
+  display: flex;
+  align-items: flex-start;
+  /* Zoomed in the sheet is wider than the scroller: 'safe' keeps the left edge
+     reachable instead of centring it out of view. */
+  justify-content: safe center;
 }
 .paper {
   position: relative;
   width: min(100%, 650px);
+  flex: none;
   margin: 0 auto;
   background: #fff;
   box-shadow: 0 2px 8px #0002;
@@ -3084,6 +3090,66 @@ footer a {
     opacity: 0;
     transform: translateY(-6px);
   }
+}
+.run-editor .actions {
+  flex-wrap: wrap;
+}
+.picture-editor strong {
+  display: block;
+  font-size: 13px;
+}
+.zoom-reset {
+  min-width: 46px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pictures already inside the document ------------------------------------- */
+.picture-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  /* Only the pictures answer to the pointer; the page around them does not. */
+  pointer-events: none;
+}
+.pdf-picture {
+  position: absolute;
+  pointer-events: auto;
+  padding: 0;
+  border: 1px dashed #962a3b4d;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.pdf-picture:hover,
+.pdf-picture.picked {
+  background: #962a3b1f;
+  border-color: var(--accent);
+  border-style: solid;
+}
+.pdf-picture:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Corner grips for resizing whatever is selected ---------------------------- */
+.mark-grip {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  pointer-events: all;
+  vector-effect: non-scaling-stroke;
+  touch-action: none;
+}
+.mark-grip.nw,
+.mark-grip.se {
+  cursor: nwse-resize;
+}
+.mark-grip.ne,
+.mark-grip.sw {
+  cursor: nesw-resize;
 }
 .mark-hit {
   fill: transparent;

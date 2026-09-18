@@ -19,8 +19,12 @@ import {
   TextCursorInput,
   Maximize2,
   Minimize2,
+  ZoomIn,
+  ZoomOut,
+  Replace,
+  Move,
 } from "lucide-react";
-import { loadPdf } from "./pdf";
+import { loadPdf, pageImages, type PageImage } from "./pdf";
 import { useText } from "./i18n";
 
 type Run = {
@@ -79,7 +83,19 @@ export default function PdfEditor({
   const [selected, setSelected] = useState(-1);
   const [dragPage, setDragPage] = useState<number | null>(null);
   const [wide, setWide] = useState(true);
+  const [pictures, setPictures] = useState<PageImage[]>([]);
+  const [picked, setPicked] = useState(-1);
+  const [zoom, setZoom] = useState(1);
+  const [pageScale, setPageScale] = useState(1);
   const grab = useRef<{ index: number; x: number; y: number } | null>(null);
+  const resize = useRef<{
+    index: number;
+    corner: string;
+    start: Mark;
+    px: number;
+    py: number;
+  } | null>(null);
+  const swapPicture = useRef(-1);
   useEffect(() => {
     let disposed = false;
     let loaded: PDFDocumentProxy | undefined;
@@ -123,6 +139,9 @@ export default function PdfEditor({
     let disposed = false;
     let task: { cancel: () => void } | undefined;
     setRendering(true);
+    setPictures([]);
+    setPicked(-1);
+    setSelected(-1);
     doc
       .getPage(page)
       .then(async (p) => {
@@ -166,6 +185,15 @@ export default function PdfEditor({
             });
           }
           setRuns(found);
+          const bitmaps = await pageImages(p, original.height);
+          if (disposed) return;
+          // A bitmap covering the whole sheet is a scan: lifting it would only
+          // get in the way of the text and marks drawn on top of it.
+          setPictures(
+            bitmaps.filter(
+              (b) => b.w * b.h < original.width * original.height * 0.92,
+            ),
+          );
         } catch {
           /* Cancelled when changing pages. */
         }
@@ -183,8 +211,22 @@ export default function PdfEditor({
       task?.cancel();
     };
   }, [doc, page]);
+  useEffect(() => {
+    const node = area.current;
+    if (!node) return;
+    const measure = () => setPageScale(node.clientWidth / dimensions.w || 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [doc, dimensions.w, zoom]);
+  const coarse =
+    typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  // Grips are drawn in page units, so undo the on screen scale to keep them
+  // the same size whatever the zoom, and big enough for a fingertip.
+  const grip = (coarse ? 22 : 11) / Math.max(pageScale, 0.05);
   const modes = [
-    ["edit", TextCursorInput, t("Editar texto", "Edit text")],
+    ["edit", TextCursorInput, t("Editar conteúdo", "Edit content")],
     ["text", Type, t("Texto", "Text")],
     ["signature", PenLine, t("Assinatura", "Signature")],
     ["draw", PenLine, t("Desenhar", "Draw")],
@@ -194,7 +236,7 @@ export default function PdfEditor({
     ["redact", EyeOff, t("Ocultar", "Redact")],
     ["image", ImagePlus, t("Imagem", "Image")],
   ] as const;
-  function behind(run: Run) {
+  function behind(run: { x: number; y: number; w: number; h: number }) {
     const target = canvas.current;
     if (!target) return "#ffffff";
     const context = target.getContext("2d", { willReadFrequently: true });
@@ -237,6 +279,145 @@ export default function PdfEditor({
       },
     ]);
     setEditing(undefined);
+  }
+
+  /** The bitmap as it was rendered, so a lifted picture looks unchanged. */
+  function crop(pic: PageImage) {
+    const target = canvas.current;
+    if (!target) return "";
+    const sx = target.width / dimensions.w;
+    const sy = target.height / dimensions.h;
+    const cut = document.createElement("canvas");
+    cut.width = Math.max(1, Math.round(pic.w * sx));
+    cut.height = Math.max(1, Math.round(pic.h * sy));
+    const context = cut.getContext("2d");
+    if (!context) return "";
+    context.drawImage(
+      target,
+      Math.round(pic.x * sx),
+      Math.round(pic.y * sy),
+      cut.width,
+      cut.height,
+      0,
+      0,
+      cut.width,
+      cut.height,
+    );
+    return cut.toDataURL("image/png");
+  }
+
+  /**
+   * A bitmap already inside the page cannot be moved where it lies, so its spot
+   * is covered with the colour around it and the picture is drawn again as an
+   * ordinary object. Passing no data simply removes it.
+   */
+  function liftPicture(at: number, data: string | null) {
+    const pic = pictures[at];
+    if (!pic) return;
+    const box = {
+      x: pic.x / dimensions.w,
+      y: pic.y / dimensions.h,
+      w: pic.w / dimensions.w,
+      h: pic.h / dimensions.h,
+    };
+    const added: Mark[] = [
+      {
+        page,
+        ...box,
+        type: "replace",
+        text: "",
+        size: 10,
+        color: "#111114",
+        background: behind(pic),
+      },
+    ];
+    if (data)
+      added.push({
+        page,
+        ...box,
+        type: "image",
+        text: "",
+        size: 12,
+        color,
+        data,
+      });
+    setMarks((previous) => {
+      setSelected(data ? previous.length + 1 : -1);
+      return [...previous, ...added];
+    });
+    setPictures((previous) => previous.filter((_, index) => index !== at));
+    setPicked(-1);
+  }
+
+  /** Keeps the drag alive outside the shape, and never breaks it if it cannot. */
+  function capture(e: React.PointerEvent) {
+    try {
+      (e.target as Element).setPointerCapture(e.pointerId);
+    } catch {
+      /* Some pointers are gone by the time we ask; dragging still works. */
+    }
+  }
+
+  function startResize(e: React.PointerEvent, index: number, corner: string) {
+    e.stopPropagation();
+    const box = area.current!.getBoundingClientRect();
+    resize.current = {
+      index,
+      corner,
+      start: marks[index],
+      px: (e.clientX - box.left) / box.width,
+      py: (e.clientY - box.top) / box.height,
+    };
+    setSelected(index);
+    capture(e);
+  }
+
+  function dragResize(e: React.PointerEvent) {
+    const held = resize.current;
+    if (!held) return;
+    const box = area.current!.getBoundingClientRect();
+    const dx = (e.clientX - box.left) / box.width - held.px;
+    const dy = (e.clientY - box.top) / box.height - held.py;
+    const start = held.corner;
+    const from = held.start;
+    let { x, y, w, h } = from;
+    if (start.includes("w")) {
+      x = from.x + dx;
+      w = from.w - dx;
+    }
+    if (start.includes("e")) w = from.w + dx;
+    if (start.includes("n")) {
+      y = from.y + dy;
+      h = from.h - dy;
+    }
+    if (start.includes("s")) h = from.h + dy;
+    const least = 0.01;
+    if (w < least) {
+      if (start.includes("w")) x = from.x + from.w - least;
+      w = least;
+    }
+    if (h < least) {
+      if (start.includes("n")) y = from.y + from.h - least;
+      h = least;
+    }
+    // Words keep their proportions: a taller box means bigger letters.
+    const grown = from.h > 0 ? h / from.h : 1;
+    setMarks((list) =>
+      list.map((item, at) =>
+        at === held.index
+          ? {
+              ...item,
+              x: Math.min(Math.max(x, 0), 1),
+              y: Math.min(Math.max(y, 0), 1),
+              w,
+              h,
+              size: ["text", "signature", "replace"].includes(item.type)
+                ? Math.min(200, Math.max(4, Math.round(from.size * grown)))
+                : item.size,
+            }
+          : item,
+      ),
+    );
   }
 
   function point(e: React.PointerEvent) {
@@ -386,6 +567,46 @@ export default function PdfEditor({
           </small>
         </div>
       )}
+      {picked >= 0 && pictures[picked] && (
+        <div className="run-editor picture-editor">
+          <strong>{t("Imagem do documento", "Document image")}</strong>
+          <small>
+            {t(
+              "A imagem é levantada da página: o sítio original fica tapado com a cor à volta e ficas com um objeto que podes arrastar, esticar ou trocar.",
+              "The picture is lifted off the page: its original spot is covered with the colour around it and you get an object you can drag, stretch or swap.",
+            )}
+          </small>
+          <div className="actions">
+            <button
+              className="primary"
+              onClick={() => liftPicture(picked, crop(pictures[picked]))}
+            >
+              <Move size={15} />
+              {t("Mover ou esticar", "Move or stretch")}
+            </button>
+            <button
+              className="secondary"
+              onClick={() => {
+                swapPicture.current = picked;
+                fileInput.current?.click();
+              }}
+            >
+              <Replace size={15} />
+              {t("Trocar imagem", "Swap image")}
+            </button>
+            <button
+              className="secondary"
+              onClick={() => liftPicture(picked, null)}
+            >
+              <Trash2 size={15} />
+              {t("Remover", "Remove")}
+            </button>
+            <button className="link" onClick={() => setPicked(-1)}>
+              {t("Cancelar", "Cancel")}
+            </button>
+          </div>
+        </div>
+      )}
       <div
         className="editor-tools"
         role="toolbar"
@@ -447,29 +668,36 @@ export default function PdfEditor({
             </label>
           </>
         )}
-        <label>
-          {t("Cor", "Color")}
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-          />
-        </label>
+        {mode !== "edit" && (
+          <label>
+            {t("Cor", "Color")}
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+            />
+          </label>
+        )}
         <p>
-          {mode === "redact"
+          {mode === "edit"
             ? t(
-                "Arrasta uma área para remover permanentemente o conteúdo.",
-                "Drag an area to permanently remove its content.",
+                "Toca numa palavra para a reescrever ou numa imagem para a mover, esticar ou trocar.",
+                "Tap a word to rewrite it, or a picture to move, stretch or swap it.",
               )
-            : mode === "signature"
+            : mode === "redact"
               ? t(
-                  "Assinatura visual, sem certificado digital. Clica na página para posicionar.",
-                  "Visual signature, without a digital certificate. Click to place it.",
+                  "Arrasta uma área para remover permanentemente o conteúdo.",
+                  "Drag an area to permanently remove its content.",
                 )
-              : t(
-                  "Clica ou arrasta na página para adicionar.",
-                  "Click or drag on the page to add.",
-                )}
+              : mode === "signature"
+                ? t(
+                    "Assinatura visual, sem certificado digital. Clica na página para posicionar.",
+                    "Visual signature, without a digital certificate. Click to place it.",
+                  )
+                : t(
+                    "Clica ou arrasta na página para adicionar.",
+                    "Click or drag on the page to add.",
+                  )}
         </p>
       </div>
       <input
@@ -490,8 +718,15 @@ export default function PdfEditor({
             return;
           }
           const reader = new FileReader();
-          reader.onload = () => setImage(reader.result as string);
+          const target = swapPicture.current;
+          swapPicture.current = -1;
+          reader.onload = () => {
+            const data = reader.result as string;
+            if (target >= 0) liftPicture(target, data);
+            else setImage(data);
+          };
           reader.readAsDataURL(f);
+          e.target.value = "";
         }}
       />
       <div className="editor-workspace">
@@ -534,13 +769,41 @@ export default function PdfEditor({
           <div
             className="paper"
             ref={area}
-            style={{ aspectRatio: `${dimensions.w} / ${dimensions.h}` }}
+            style={{
+              aspectRatio: `${dimensions.w} / ${dimensions.h}`,
+              width: `calc(min(100%, 650px) * ${zoom})`,
+            }}
             onPointerDown={down}
             onPointerMove={move}
             onPointerUp={up}
             onPointerCancel={() => setCurrent(undefined)}
           >
             <canvas ref={canvas} />
+            {mode === "edit" && !rendering && pictures.length > 0 && (
+              <div className="picture-layer">
+                {pictures.map((pic, index) => (
+                  <button
+                    key={index}
+                    className={
+                      "pdf-picture " + (picked === index ? "picked" : "")
+                    }
+                    title={t("Imagem do documento", "Document image")}
+                    aria-label={t("Editar esta imagem", "Edit this image")}
+                    style={{
+                      left: (pic.x / dimensions.w) * 100 + "%",
+                      top: (pic.y / dimensions.h) * 100 + "%",
+                      width: (pic.w / dimensions.w) * 100 + "%",
+                      height: (pic.h / dimensions.h) * 100 + "%",
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPicked(index);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             {mode === "edit" && !rendering && (
               <div className="text-layer">
                 {runs.map((run, index) => (
@@ -688,9 +951,7 @@ export default function PdfEditor({
                         x: (event.clientX - box.left) / box.width - m.x,
                         y: (event.clientY - box.top) / box.height - m.y,
                       };
-                      (event.target as Element).setPointerCapture(
-                        event.pointerId,
-                      );
+                      capture(event);
                     }}
                     onPointerMove={(event) => {
                       const held = grab.current;
@@ -718,6 +979,48 @@ export default function PdfEditor({
                   />
                 );
               })}
+              {selected >= 0 &&
+                marks[selected] &&
+                marks[selected].page === page &&
+                marks[selected].type !== "draw" &&
+                (() => {
+                  const m = marks[selected];
+                  const x = m.x * dimensions.w;
+                  const y = m.y * dimensions.h;
+                  const w = Math.max(m.w * dimensions.w, m.size || 12);
+                  const h = Math.max(m.h * dimensions.h, (m.size || 12) * 1.2);
+                  const corners: [string, number, number][] = [
+                    ["nw", x, y],
+                    ["ne", x + w, y],
+                    ["sw", x, y + h],
+                    ["se", x + w, y + h],
+                  ];
+                  return (
+                    <g>
+                      {corners.map(([corner, hx, hy]) => (
+                        <rect
+                          key={corner}
+                          className={"mark-grip " + corner}
+                          x={hx - grip / 2}
+                          y={hy - grip / 2}
+                          width={grip}
+                          height={grip}
+                          rx={grip * 0.25}
+                          onPointerDown={(event) =>
+                            startResize(event, selected, corner)
+                          }
+                          onPointerMove={dragResize}
+                          onPointerUp={() => {
+                            resize.current = null;
+                          }}
+                          onPointerCancel={() => {
+                            resize.current = null;
+                          }}
+                        />
+                      ))}
+                    </g>
+                  );
+                })()}
             </svg>
             {rendering && (
               <div className="rendering">
@@ -746,6 +1049,33 @@ export default function PdfEditor({
         </div>
       )}
       <div className="editor-page-actions">
+        <button
+          className="icon-btn"
+          disabled={zoom <= 0.5}
+          onClick={() =>
+            setZoom((v) => Math.max(0.5, Math.round((v - 0.25) * 100) / 100))
+          }
+          aria-label={t("Reduzir zoom", "Zoom out")}
+        >
+          <ZoomOut size={18} />
+        </button>
+        <button
+          className="link zoom-reset"
+          onClick={() => setZoom(1)}
+          aria-label={t("Repor o zoom", "Reset zoom")}
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          className="icon-btn"
+          disabled={zoom >= 3}
+          onClick={() =>
+            setZoom((v) => Math.min(3, Math.round((v + 0.25) * 100) / 100))
+          }
+          aria-label={t("Aumentar zoom", "Zoom in")}
+        >
+          <ZoomIn size={18} />
+        </button>
         <button
           className="icon-btn"
           disabled={order.indexOf(page) === 0}
@@ -819,8 +1149,8 @@ export default function PdfEditor({
       <div className="editor-save">
         <small>
           {t(
-            "Adiciona conteúdo e anotações. O texto original não é editável.",
-            "Add content and annotations. Original text is not editable.",
+            "Em “Editar conteúdo” reescreves palavras e mexes nas imagens que já estão no PDF; as outras ferramentas acrescentam coisas novas.",
+            "Under “Edit content” you rewrite words and move the pictures already in the PDF; the other tools add new things.",
           )}
         </small>
         <button
