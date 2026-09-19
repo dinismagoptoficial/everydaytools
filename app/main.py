@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import secrets
 import shutil
 import time
@@ -7,7 +8,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +19,8 @@ from . import __version__, config, legal, mail, security, storage
 from .catalog import ALLOWED, OPERATIONS, available, catalog
 from .db import connect, initialize, settings
 from .downloads import DownloadResponse
+
+logger = logging.getLogger("everyday_tools.api")
 
 
 @asynccontextmanager
@@ -75,6 +78,7 @@ async def protections(request, call_next):
     try:
         response = await call_next(request)
     except Exception:
+        logger.exception("unhandled request error")
         return JSONResponse({"detail": "internal_error"}, status_code=500, headers={"Cache-Control": "no-store"})
     response.headers.update({
         "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
@@ -156,6 +160,64 @@ class Preferences(BaseModel):
     register_limit: int = Field(ge=1, le=100)
     admin_limit: int = Field(ge=1, le=100)
     job_limit: int = Field(ge=1, le=100)
+
+
+class FeedbackCreate(BaseModel):
+    type: Literal["BUG", "FEATURE", "OTHER"]
+    title: str = Field(max_length=140)
+    description: str = Field(max_length=5000)
+    related: str = Field(default="", max_length=120)
+    route: str = Field(default="", max_length=160)
+    language: Literal["pt-PT", "en"]
+
+
+class FeedbackState(BaseModel):
+    status: Literal["NEW", "IN_PROGRESS", "COMPLETED"]
+
+
+def feedback_text(value, minimum, maximum, multiline=False):
+    value = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not minimum <= len(value) <= maximum:
+        raise HTTPException(400, "feedback_invalid")
+    if any(ord(character) < 32 and character not in ("\n", "\t") for character in value):
+        raise HTTPException(400, "feedback_invalid")
+    if not multiline and ("\n" in value or "\t" in value):
+        raise HTTPException(400, "feedback_invalid")
+    return value
+
+
+def feedback_result(row, details=True):
+    result = {key: row[key] for key in (
+        "id", "type", "title", "status", "related", "route", "language", "app_version",
+        "created", "updated", "completed",
+    )}
+    if details:
+        result["description"] = row["description"]
+    result["user"] = {"id": row["user_id"], "email": row["email"], "name": row["user_name"] or ""}
+    return result
+
+
+def send_feedback_admin_mail(report, admins, installation, public_url, submitter):
+    link = f"{public_url.rstrip('/')}/#admin/feedback/{report['id']}" if public_url else ""
+    for admin_account in admins:
+        try:
+            message = mail.build_feedback_admin(
+                admin_account["email"], admin_account["language"] or "pt-PT", installation,
+                report, submitter, link,
+            )
+            mail.send(message, installation)
+        except Exception:
+            logger.exception("feedback administrator email could not be prepared")
+
+
+def send_feedback_user_mail(report, account, installation, status):
+    try:
+        message = mail.build_feedback_update(
+            account["email"], account["language"] or report["language"], installation, report, status,
+        )
+        mail.send(message, installation)
+    except Exception:
+        logger.exception("feedback status email could not be prepared")
 
 
 def user_public(user):
@@ -243,7 +305,8 @@ def register(body: Registration, request: Request, response: Response):
 def login(body: Credentials, request: Request, response: Response):
     prefs = settings()
     email = security.email_address(body.email)
-    for key in ("login-ip:" + security.ip(request), "login-account:" + email):
+    rate_keys = ("login-ip:" + security.ip(request), "login-account:" + email)
+    for key in rate_keys:
         security.rate_limit(key, prefs["login_limit"], 60)
     with connect() as db:
         user = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
@@ -253,6 +316,8 @@ def login(body: Credentials, request: Request, response: Response):
         current = db.execute("SELECT password,disabled FROM users WHERE id=?", (user["id"],)).fetchone()
         if not current or current["disabled"] or current["password"] != user["password"]:
             raise HTTPException(401, "invalid_credentials")
+        db.executemany("DELETE FROM rate_limits WHERE key=?",
+                       ((security.digest(key),) for key in rate_keys))
         security.new_session(db, response, user["id"], request)
     return {"ok": True}
 
@@ -559,6 +624,133 @@ def matte_asset(job_id: str, index: int, asset: Literal["mask", "source"], user=
         raise HTTPException(404, "not_found")
     suffix = "mask.png" if asset == "mask" else "source.webp"
     return DownloadResponse(storage.job_dir(job_id) / "editor", f"{index}.{suffix}", filename=f"{asset}.{suffix.split('.')[-1]}")
+
+
+@app.post("/api/feedback", status_code=201)
+def create_feedback(body: FeedbackCreate, user=Depends(security.session)):
+    security.rate_limit("feedback:" + user["id"], 6, 3600)
+    title = feedback_text(body.title, 3, 140)
+    description = feedback_text(body.description, 10, 5000, True)
+    related = feedback_text(body.related, 0, 120) if body.related.strip() else ""
+    route = feedback_text(body.route, 0, 160) if body.route.strip() else ""
+    now = time.time()
+    report_id = secrets.token_hex(16)
+    with connect(True) as db:
+        duplicate = db.execute(
+            """SELECT id FROM feedback WHERE user_id=? AND type=? AND title=? AND description=?
+               AND related=? AND route=? AND created>? LIMIT 1""",
+            (user["id"], body.type, title, description, related, route, now - 600),
+        ).fetchone()
+        if duplicate:
+            raise HTTPException(409, "feedback_duplicate")
+        db.execute(
+            """INSERT INTO feedback
+               (id,type,title,description,status,user_id,related,route,language,app_version,created,updated)
+               VALUES (?,?,?,?,'NEW',?,?,?,?,?,?,?)""",
+            (report_id, body.type, title, description, user["id"], related, route,
+             body.language, __version__, now, now),
+        )
+        row = db.execute(
+            """SELECT f.*,u.email,coalesce(p.name,'') user_name FROM feedback f
+               JOIN users u ON u.id=f.user_id LEFT JOIN user_preferences p ON p.user_id=u.id
+               WHERE f.id=?""", (report_id,),
+        ).fetchone()
+        admins = [dict(item) for item in db.execute(
+            """SELECT u.email,coalesce(p.language,'pt-PT') language FROM users u
+               LEFT JOIN user_preferences p ON p.user_id=u.id
+               WHERE u.role='ADMIN' AND u.disabled=0"""
+        )]
+        prefs = settings(db)
+    report = feedback_result(row)
+    submitter = f"{row['user_name']} <{row['email']}>" if row["user_name"] else row["email"]
+    send_feedback_admin_mail(report, admins, prefs["installation_name"],
+                             prefs.get("smtp_public_url", ""), submitter)
+    return report
+
+
+@app.get("/api/admin/feedback")
+def admin_feedback(
+    status_filter: Literal["NEW", "IN_PROGRESS", "COMPLETED"] | None = Query(None, alias="status"),
+    type_filter: Literal["BUG", "FEATURE", "OTHER"] | None = Query(None, alias="type"),
+    created_from: float | None = Query(None, ge=0),
+    created_to: float | None = Query(None, ge=0),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    user=Depends(security.admin),
+):
+    if created_from is not None and created_to is not None and created_from > created_to:
+        raise HTTPException(400, "feedback_invalid")
+    conditions, values = [], []
+    if status_filter:
+        conditions.append("f.status=?")
+        values.append(status_filter)
+    if type_filter:
+        conditions.append("f.type=?")
+        values.append(type_filter)
+    if created_from is not None:
+        conditions.append("f.created>=?")
+        values.append(created_from)
+    if created_to is not None:
+        conditions.append("f.created<=?")
+        values.append(created_to)
+    where = " WHERE " + " AND ".join(conditions) if conditions else ""
+    with connect() as db:
+        total = db.execute("SELECT count(*) FROM feedback f" + where, values).fetchone()[0]
+        rows = db.execute(
+            """SELECT f.*,u.email,coalesce(p.name,'') user_name FROM feedback f
+               JOIN users u ON u.id=f.user_id LEFT JOIN user_preferences p ON p.user_id=u.id"""
+            + where + " ORDER BY f.created DESC LIMIT ? OFFSET ?",
+            (*values, limit, (page - 1) * limit),
+        ).fetchall()
+    return {"items": [feedback_result(row, False) for row in rows], "total": total,
+            "page": page, "limit": limit}
+
+
+@app.get("/api/admin/feedback/{report_id}")
+def admin_feedback_detail(report_id: str, user=Depends(security.admin)):
+    with connect() as db:
+        row = db.execute(
+            """SELECT f.*,u.email,coalesce(p.name,'') user_name FROM feedback f
+               JOIN users u ON u.id=f.user_id LEFT JOIN user_preferences p ON p.user_id=u.id
+               WHERE f.id=?""", (report_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "feedback_not_found")
+    return feedback_result(row)
+
+
+@app.put("/api/admin/feedback/{report_id}")
+def admin_feedback_state(report_id: str, body: FeedbackState, user=Depends(security.admin)):
+    now = time.time()
+    with connect(True) as db:
+        previous = db.execute("SELECT status FROM feedback WHERE id=?", (report_id,)).fetchone()
+        if not previous:
+            raise HTTPException(404, "feedback_not_found")
+        completed = now if body.status == "COMPLETED" else None
+        if previous["status"] != body.status:
+            db.execute("UPDATE feedback SET status=?,updated=?,completed=? WHERE id=?",
+                       (body.status, now, completed, report_id))
+        row = db.execute(
+            """SELECT f.*,u.email,coalesce(p.name,'') user_name,
+                      coalesce(p.language,f.language) user_language
+               FROM feedback f JOIN users u ON u.id=f.user_id
+               LEFT JOIN user_preferences p ON p.user_id=u.id WHERE f.id=?""", (report_id,),
+        ).fetchone()
+        prefs = settings(db)
+    report = feedback_result(row)
+    if previous["status"] != body.status and body.status in ("IN_PROGRESS", "COMPLETED"):
+        send_feedback_user_mail(report, {"email": row["email"], "language": row["user_language"]},
+                                prefs["installation_name"], body.status)
+    return report
+
+
+@app.delete("/api/admin/feedback/{report_id}")
+def admin_feedback_delete(report_id: str, user=Depends(security.admin)):
+    with connect(True) as db:
+        removed = db.execute("DELETE FROM feedback WHERE id=?", (report_id,)).rowcount
+    if not removed:
+        raise HTTPException(404, "feedback_not_found")
+    return {"ok": True}
 
 
 @app.get("/api/admin")

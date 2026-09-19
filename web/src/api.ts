@@ -46,6 +46,23 @@ export type Job = {
   files: { name: string; size: number; ext: string; uploaded: boolean }[];
   outputs: { name: string; size: number; path: string }[];
 };
+export type FeedbackType = "BUG" | "FEATURE" | "OTHER";
+export type FeedbackStatus = "NEW" | "IN_PROGRESS" | "COMPLETED";
+export type Feedback = {
+  id: string;
+  type: FeedbackType;
+  title: string;
+  description?: string;
+  status: FeedbackStatus;
+  related: string;
+  route: string;
+  language: "pt-PT" | "en";
+  app_version: string;
+  created: number;
+  updated: number;
+  completed: number | null;
+  user: { id: string; email: string; name: string };
+};
 let csrf = "";
 export function setCsrf(value: string) {
   csrf = value;

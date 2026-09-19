@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory() as temporary:
     schema = source.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type DESC").fetchall()
     for (sql,) in schema:
         target.execute(sql)
-    for table in ("users", "settings", "user_preferences"):
+    for table in ("users", "settings", "user_preferences", "feedback"):
         rows = source.execute("SELECT * FROM " + table).fetchall()
         if rows:
             placeholders = ",".join("?" for _ in rows[0])

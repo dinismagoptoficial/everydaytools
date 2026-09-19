@@ -1,15 +1,23 @@
 import { useEffect, useState } from "react";
 import MailSettings from "./MailSettings";
+import FeedbackAdmin from "./FeedbackAdmin";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { api, fileSize } from "./api";
-import { useError, useText } from "./i18n";
+import { useError, useFeedbackText, useText } from "./i18n";
 
-export default function Admin({ onSettings }: { onSettings: () => void }) {
+export default function Admin({
+  onSettings,
+  initialFeedbackId = "",
+}: {
+  onSettings: () => void;
+  initialFeedbackId?: string;
+}) {
   const t = useText(),
+    ft = useFeedbackText(),
     errorText = useError();
   const [data, setData] = useState<any>(),
     [prefs, setPrefs] = useState<Record<string, any>>({}),
-    [tab, setTab] = useState("users"),
+    [tab, setTab] = useState(initialFeedbackId ? "feedback" : "users"),
     [error, setError] = useState(""),
     [success, setSuccess] = useState(false),
     [busy, setBusy] = useState(false),
@@ -86,7 +94,7 @@ export default function Admin({ onSettings }: { onSettings: () => void }) {
       </div>
       <div className="section-heading">
         <div className="filter-tabs">
-          {["users", "jobs", "storage", "settings", "email", "system"].map(
+          {["users", "jobs", "feedback", "storage", "settings", "email", "system"].map(
             (k, i) => (
               <button
                 key={k}
@@ -100,6 +108,7 @@ export default function Admin({ onSettings }: { onSettings: () => void }) {
                   [
                     t("Utilizadores", "Users"),
                     t("Tarefas", "Jobs"),
+                    ft("adminTab"),
                     t("Armazenamento", "Storage"),
                     t("Definições", "Settings"),
                     t("E-mail", "Email"),
@@ -256,6 +265,7 @@ export default function Admin({ onSettings }: { onSettings: () => void }) {
               )}
             </>
           )}
+          {tab === "feedback" && <FeedbackAdmin initialId={initialFeedbackId} />}
           {tab === "storage" && (
             <>
               {data.storage.free < prefs.min_free_mb * 1024 ** 2 && (

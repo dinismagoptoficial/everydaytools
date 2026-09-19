@@ -3,7 +3,10 @@ import email
 import socket
 import threading
 
+from fastapi.testclient import TestClient
+
 from app.legal import VERSION
+from app.main import app
 from conftest import authenticate
 
 CONFIGURED = {"provider": "custom", "host": "127.0.0.1", "port": 0, "security": "none",
@@ -203,5 +206,48 @@ def test_unknown_address_reveals_nothing_and_sends_nothing(client):
         assert client.post("/api/recover", json={"email": "stranger@example.test"}).status_code == 200
         threading.Event().wait(0.6)
         assert sink.messages == []
+    finally:
+        sink.close()
+
+
+def test_feedback_notifications_are_delivered_through_the_configured_smtp(admin_client):
+    sink = Sink()
+    try:
+        configure(admin_client, sink, public_url="http://everyday-tools.local")
+        with TestClient(app, headers={"X-Requested-With": "EverydayTools"}) as person:
+            response = person.post("/api/register", json={
+                "email": "feedback-user@example.test", "password": "good-test-password", "language": "en",
+            })
+            assert response.status_code == 200, response.text
+            account = person.get("/api/me").json()
+            person.headers["X-CSRF-Token"] = account["csrf"]
+            sink.wait(1)
+
+            response = person.post("/api/feedback", json={
+                "type": "BUG", "title": "Preview alignment",
+                "description": "The preview alignment changes after zooming the document.",
+                "route": "pdf", "language": "en",
+            })
+            assert response.status_code == 201, response.text
+            report_id = response.json()["id"]
+            notification = sink.wait(2)[1]
+            assert notification["To"] == "admin@example.test"
+            assert "Preview alignment" in plain(notification)
+            assert f"/#admin/feedback/{report_id}" in plain(notification)
+
+            response = admin_client.put(
+                f"/api/admin/feedback/{report_id}", json={"status": "IN_PROGRESS"}
+            )
+            assert response.status_code == 200, response.text
+            progress = sink.wait(3)[2]
+            assert progress["To"] == "feedback-user@example.test"
+            assert "now being reviewed" in plain(progress)
+
+            response = admin_client.put(
+                f"/api/admin/feedback/{report_id}", json={"status": "COMPLETED"}
+            )
+            assert response.status_code == 200, response.text
+            completed = sink.wait(4)[3]
+            assert "marked as completed" in plain(completed)
     finally:
         sink.close()

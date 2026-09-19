@@ -115,6 +115,8 @@ Os ficheiros expiram, por defeito, 60 minutos após a criação da tarefa. O pra
 
 O volume Docker guarda contas, definições, tarefas temporárias e o modelo. Não há telemetria, fontes remotas ou publicidade. O worker não tem acesso à rede. As ferramentas de texto e calculadoras correm no browser. O SMTP opcional envia recuperações de acesso, confirmações de criação de conta e testes de configuração. O conteúdo segue o idioma escolhido por cada conta; a primeira conta e os valores predefinidos usam o idioma selecionado durante a instalação.
 
+Os utilizadores autenticados podem comunicar erros e sugestões pelo menu da conta. A administração reúne os pedidos, permite filtrá-los e acompanhar o estado. Quando o SMTP está configurado, os administradores recebem os novos pedidos e o autor recebe as atualizações no idioma da sua conta.
+
 O administrador define o acesso, a retenção, os backups e os contactos de privacidade da sua instalação. A interface não lhe permite descarregar documentos de outras contas, mas quem controla o servidor tem acesso técnico ao armazenamento. A aplicação não controla snapshots, backups externos ou cópias já descarregadas. Consulta [privacidade e condições](docs/legal.md).
 
 ## Manutenção

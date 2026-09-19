@@ -59,6 +59,24 @@ def test_login_rate_limit(client):
     assert "Retry-After" in response.headers
 
 
+def test_successful_login_clears_previous_failed_attempts(client):
+    authenticate(client)
+    for _ in range(4):
+        assert client.post(
+            "/api/login", json={"email": "admin@example.test", "password": "wrong-password"}
+        ).status_code == 401
+    assert client.post(
+        "/api/login", json={"email": "admin@example.test", "password": "good-test-password"}
+    ).status_code == 200
+    for _ in range(5):
+        assert client.post(
+            "/api/login", json={"email": "admin@example.test", "password": "wrong-password"}
+        ).status_code == 401
+    assert client.post(
+        "/api/login", json={"email": "admin@example.test", "password": "wrong-password"}
+    ).status_code == 429
+
+
 def test_atomic_rate_limit():
     def attempt(_):
         try:

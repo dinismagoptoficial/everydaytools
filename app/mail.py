@@ -1,13 +1,17 @@
 import os
+import logging
 import smtplib
 import ssl
 import threading
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from html import escape
 from pathlib import Path
 
 from .db import connect, settings
+
+logger = logging.getLogger("everyday_tools.mail")
 
 PROVIDERS = {
     "gmail": {"label": "Gmail", "host": "smtp.gmail.com", "port": 587, "security": "starttls",
@@ -152,6 +156,72 @@ def build_welcome(name, address, language, installation):
     return card(address, subject, title, lines, [*lines, installation], language, installation)
 
 
+FEEDBACK_TEXT = {
+    "pt-PT": {
+        "admin_subject": "novo comentário recebido",
+        "admin_title": "Novo comentário recebido",
+        "type": "Tipo",
+        "report_title": "Título",
+        "user": "Utilizador",
+        "date": "Data",
+        "description": "Descrição",
+        "open": "Abrir na administração",
+        "update_subject": "atualização do teu comentário",
+        "update_title": "Atualização do teu comentário",
+        "in_progress": "O teu comentário está agora em tratamento.",
+        "completed": "O teu comentário foi marcado como concluído.",
+        "BUG": "Erro",
+        "FEATURE": "Sugestão",
+        "OTHER": "Outro",
+    },
+    "en": {
+        "admin_subject": "new feedback received",
+        "admin_title": "New feedback received",
+        "type": "Type",
+        "report_title": "Title",
+        "user": "User",
+        "date": "Date",
+        "description": "Description",
+        "open": "Open in administration",
+        "update_subject": "an update to your feedback",
+        "update_title": "Your feedback has been updated",
+        "in_progress": "Your feedback is now being reviewed.",
+        "completed": "Your feedback has been marked as completed.",
+        "BUG": "Bug report",
+        "FEATURE": "Feature suggestion",
+        "OTHER": "Other",
+    },
+}
+
+
+def feedback_date(value):
+    return datetime.fromtimestamp(value, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def build_feedback_admin(address, language, installation, report, submitter, link=""):
+    language = language if language in FEEDBACK_TEXT else "pt-PT"
+    text = FEEDBACK_TEXT[language]
+    lines = [
+        f"{text['type']}: {text[report['type']]}",
+        f"{text['report_title']}: {report['title']}",
+        f"{text['user']}: {submitter}",
+        f"{text['date']}: {feedback_date(report['created'])}",
+        f"{text['description']}:\n{report['description']}",
+    ]
+    subject = f"{installation}: {text['admin_subject']}"
+    return card(address, subject, text["admin_title"], lines, [*lines, link] if link else lines,
+                language, installation, text["open"] if link else "", link)
+
+
+def build_feedback_update(address, language, installation, report, status):
+    language = language if language in FEEDBACK_TEXT else "pt-PT"
+    text = FEEDBACK_TEXT[language]
+    update = text["in_progress" if status == "IN_PROGRESS" else "completed"]
+    lines = [f"{text['report_title']}: {report['title']}", update]
+    subject = f"{installation}: {text['update_subject']}"
+    return card(address, subject, text["update_title"], lines, lines, language, installation)
+
+
 def send_recovery(name, address, link, language, installation):
     send(build(name, address, link, language, installation), installation)
 
@@ -161,18 +231,21 @@ def send_welcome(name, address, language, installation):
 
 
 def send(message, installation):
-    with connect() as db:
-        prefs = settings(db)
-    if not (prefs.get("smtp_host") and prefs.get("smtp_from")):
-        return
-    message["From"] = formataddr((clean_header(installation), prefs["smtp_from"]))
-    args = (prefs["smtp_host"], int(prefs.get("smtp_port") or 587), prefs.get("smtp_security") or "starttls",
-            prefs.get("smtp_user") or "", prefs.get("smtp_password") or "", message)
-    threading.Thread(target=attempt, args=args, daemon=True).start()
+    try:
+        with connect() as db:
+            prefs = settings(db)
+        if not (prefs.get("smtp_host") and prefs.get("smtp_from")):
+            return
+        message["From"] = formataddr((clean_header(installation), prefs["smtp_from"]))
+        args = (prefs["smtp_host"], int(prefs.get("smtp_port") or 587), prefs.get("smtp_security") or "starttls",
+                prefs.get("smtp_user") or "", prefs.get("smtp_password") or "", message)
+        threading.Thread(target=attempt, args=args, daemon=True).start()
+    except Exception:
+        logger.exception("email message could not be queued")
 
 
 def attempt(host, port, security, user, password, message):
     try:
         deliver(host, port, security, user, password, message)
     except Exception:
-        print("email message not delivered", flush=True)
+        logger.exception("email message not delivered")

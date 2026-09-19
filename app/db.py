@@ -77,6 +77,29 @@ def initialize():
             )""")
             db.execute("CREATE INDEX jobs_owner ON jobs(user_id, expires)")
             db.execute("PRAGMA user_version=3")
+        if db.execute("PRAGMA user_version").fetchone()[0] < 4:
+            db.executescript("""
+                CREATE TABLE feedback (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL CHECK(type IN ('BUG','FEATURE','OTHER')),
+                    title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 140),
+                    description TEXT NOT NULL CHECK(length(description) BETWEEN 1 AND 5000),
+                    status TEXT NOT NULL DEFAULT 'NEW'
+                        CHECK(status IN ('NEW','IN_PROGRESS','COMPLETED')),
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    related TEXT NOT NULL DEFAULT '',
+                    route TEXT NOT NULL DEFAULT '',
+                    language TEXT NOT NULL CHECK(language IN ('pt-PT','en')),
+                    app_version TEXT NOT NULL,
+                    created REAL NOT NULL,
+                    updated REAL NOT NULL,
+                    completed REAL
+                );
+                CREATE INDEX feedback_created ON feedback(created DESC);
+                CREATE INDEX feedback_filters ON feedback(status, type, created DESC);
+                CREATE INDEX feedback_owner ON feedback(user_id, created DESC);
+                PRAGMA user_version=4;
+            """)
 
 
 def settings(db=None):

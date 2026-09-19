@@ -224,7 +224,101 @@ export function useToolCopy() {
     return entry ? entry[(description ? 2 : 0) + (lang === "en" ? 1 : 0)] : id;
   };
 }
+
+export const feedbackCopy = {
+  menu: ["Reportar erro ou sugerir", "Report a bug or suggest"],
+  formTitle: ["Enviar comentário", "Send feedback"],
+  formIntro: [
+    "Conta-nos o que aconteceu ou o que gostarias de ver melhorado.",
+    "Tell us what happened or what you would like to see improved.",
+  ],
+  type: ["Tipo", "Type"],
+  bug: ["Relatório de erro", "Bug report"],
+  feature: ["Sugestão de funcionalidade", "Feature suggestion"],
+  other: ["Outro", "Other"],
+  title: ["Título", "Title"],
+  titlePlaceholder: ["Resumo breve", "Brief summary"],
+  description: ["Descrição", "Description"],
+  descriptionPlaceholder: [
+    "Explica o que aconteceu, o que esperavas ou como a sugestão ajudaria.",
+    "Explain what happened, what you expected or how the suggestion would help.",
+  ],
+  related: ["Página ou ferramenta relacionada", "Related page or tool"],
+  optional: ["Opcional", "Optional"],
+  cancel: ["Cancelar", "Cancel"],
+  submit: ["Enviar", "Submit"],
+  submitting: ["A enviar…", "Submitting…"],
+  submitted: ["Comentário enviado. Obrigado.", "Feedback submitted. Thank you."],
+  adminTab: ["Comentários", "Feedback"],
+  adminIntro: [
+    "Relatórios de erros e sugestões enviados pelos utilizadores.",
+    "Bug reports and suggestions submitted by users.",
+  ],
+  status: ["Estado", "Status"],
+  statusAll: ["Todos os estados", "All statuses"],
+  typeAll: ["Todos os tipos", "All types"],
+  dateFrom: ["Desde", "From"],
+  dateTo: ["Até", "To"],
+  clearFilters: ["Limpar filtros", "Clear filters"],
+  user: ["Utilizador", "User"],
+  date: ["Data", "Date"],
+  actions: ["Ações", "Actions"],
+  open: ["Abrir", "Open"],
+  details: ["Detalhes do comentário", "Feedback details"],
+  submittedAt: ["Enviado", "Submitted"],
+  updatedAt: ["Atualizado", "Updated"],
+  route: ["Página de origem", "Source page"],
+  version: ["Versão", "Version"],
+  language: ["Idioma", "Language"],
+  noRelated: ["Não indicado", "Not provided"],
+  newStatus: ["Novo", "New"],
+  progressStatus: ["Em tratamento", "In progress"],
+  completedStatus: ["Concluído", "Completed"],
+  setNew: ["Voltar a Novo", "Return to New"],
+  setProgress: ["Marcar em tratamento", "Mark as in progress"],
+  setCompleted: ["Marcar como concluído", "Mark as completed"],
+  delete: ["Eliminar", "Delete"],
+  deleteTitle: ["Eliminar comentário?", "Delete feedback?"],
+  deleteText: [
+    "Este comentário será eliminado de forma permanente.",
+    "This feedback will be permanently deleted.",
+  ],
+  confirmDelete: ["Eliminar agora", "Delete now"],
+  goBack: ["Voltar", "Go back"],
+  close: ["Fechar", "Close"],
+  empty: [
+    "Não existem comentários com estes filtros.",
+    "There is no feedback matching these filters.",
+  ],
+  loading: ["A carregar…", "Loading…"],
+  previous: ["Anterior", "Previous"],
+  next: ["Seguinte", "Next"],
+  results: ["resultados", "results"],
+} as const;
+
+export type FeedbackTextKey = keyof typeof feedbackCopy;
+export function useFeedbackText() {
+  const lang = useContext(LanguageContext);
+  return (key: FeedbackTextKey) => feedbackCopy[key][lang === "en" ? 1 : 0];
+}
+
 const errors: Record<string, [string, string]> = {
+  feedback_duplicate: [
+    "Este comentário já foi enviado há poucos minutos.",
+    "This feedback was already submitted a few minutes ago.",
+  ],
+  feedback_invalid: [
+    "Revê o título, a descrição e os restantes campos.",
+    "Check the title, description and remaining fields.",
+  ],
+  feedback_not_found: [
+    "Este comentário já não existe.",
+    "This feedback no longer exists.",
+  ],
+  invalid_input: [
+    "Revê os campos preenchidos.",
+    "Check the completed fields.",
+  ],
   password_mismatch: [
     "As palavras-passe não coincidem.",
     "The passwords do not match.",

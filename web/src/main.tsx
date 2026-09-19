@@ -13,6 +13,7 @@ import {
   Image,
   LogOut,
   Menu,
+  MessageSquareText,
   Music2,
   Search,
   Settings,
@@ -42,6 +43,7 @@ import {
 import {
   LanguageContext,
   useError,
+  useFeedbackText,
   useText,
   useToolCopy,
   type Language,
@@ -54,6 +56,7 @@ const Account = lazy(() => import("./Account"));
 const Admin = lazy(() => import("./Admin"));
 const Preview = lazy(() => import("./Preview"));
 const MatteEditor = lazy(() => import("./MatteEditor"));
+const FeedbackForm = lazy(() => import("./Feedback"));
 const PREVIEWABLE_ORIGINALS = new Set([
   "pdf",
   "docx",
@@ -103,11 +106,15 @@ function Application({
 }) {
   const t = useText(),
     copy = useToolCopy(),
+    ft = useFeedbackText(),
     errorText = useError();
+  const initialFeedbackId = useRef(
+    location.hash.match(/^#admin\/feedback\/([a-f0-9]{32})$/)?.[1] || "",
+  );
   const [status, setStatus] = useState<Status>(),
     [user, setUser] = useState<User | null>(null),
     [loaded, setLoaded] = useState(false);
-  const [page, setPage] = useState("home"),
+  const [page, setPage] = useState(initialFeedbackId.current ? "admin" : "home"),
     [tools, setTools] = useState<Tool[]>([]),
     [jobs, setJobs] = useState<Job[]>([]);
   const [search, setSearch] = useState(""),
@@ -121,6 +128,8 @@ function Application({
     [active, setActive] = useState<Job>(),
     [desired, setDesired] = useState("");
   const [profile, setProfile] = useState(false),
+    [feedback, setFeedback] = useState(false),
+    [feedbackToast, setFeedbackToast] = useState(false),
     [confirmDelete, setConfirmDelete] = useState<Job>(),
     [preview, setPreview] = useState<{
       job: Job;
@@ -152,6 +161,7 @@ function Application({
         setTools(list);
         setJobs(recent);
         setUser(me);
+        if (initialFeedbackId.current && me.role !== "ADMIN") setPage("home");
       } catch (e) {
         if ((e as Error).message === "unauthorized") setUser(null);
         else throw e;
@@ -240,6 +250,11 @@ function Application({
     };
   }, [user]);
   useEffect(() => {
+    if (!feedbackToast) return;
+    const timer = setTimeout(() => setFeedbackToast(false), 4500);
+    return () => clearTimeout(timer);
+  }, [feedbackToast]);
+  useEffect(() => {
     if (active && active.expires * 1000 < Date.now()) {
       setActive(undefined);
       setError("not_found");
@@ -249,7 +264,8 @@ function Application({
     if (matte && !jobs.some((j) => j.id === matte.job.id)) setMatte(undefined);
   }, [jobs, active, preview, matte]);
   useEffect(() => {
-    if (!active && !profile && !confirmDelete && !preview && !matte) return;
+    if (!active && !profile && !feedback && !confirmDelete && !preview && !matte)
+      return;
     const previous = document.activeElement as HTMLElement;
     const root = dialogRef.current;
     const focusable = () =>
@@ -263,6 +279,7 @@ function Application({
       if (e.key === "Escape") {
         setActive(undefined);
         setProfile(false);
+        setFeedback(false);
         setConfirmDelete(undefined);
         setPreview(undefined);
         setMatte(undefined);
@@ -288,7 +305,14 @@ function Application({
       document.body.style.overflow = overflow;
       previous?.focus();
     };
-  }, [active?.id, profile, confirmDelete?.id, preview?.job.id, matte?.job.id]);
+  }, [
+    active?.id,
+    profile,
+    feedback,
+    confirmDelete?.id,
+    preview?.job.id,
+    matte?.job.id,
+  ]);
 
   function navigate(target: string) {
     setPage(target);
@@ -466,7 +490,7 @@ function Application({
         <div className="sidebar-scrim" onClick={() => setMobile(false)} />
       )}
       <aside
-        inert={Boolean(active || profile || confirmDelete || preview || matte)}
+        inert={Boolean(active || profile || feedback || confirmDelete || preview || matte)}
         className={"sidebar " + (mobile ? "open" : "")}
       >
         <button className="brand" onClick={() => navigate("home")}>
@@ -524,6 +548,15 @@ function Application({
                   <Settings size={16} />
                   {t("A minha conta", "My account")}
                 </button>
+                <button
+                  onClick={() => {
+                    setFeedback(true);
+                    setMenu(false);
+                  }}
+                >
+                  <MessageSquareText size={16} />
+                  {ft("menu")}
+                </button>
                 <button onClick={logout}>
                   <LogOut size={16} />
                   {t("Terminar sessão", "Sign out")}
@@ -553,7 +586,7 @@ function Application({
       </aside>
       <div
         className="workspace"
-        inert={Boolean(active || profile || confirmDelete || preview || matte)}
+        inert={Boolean(active || profile || feedback || confirmDelete || preview || matte)}
       >
         <header className="topbar">
           <div className="breadcrumb">
@@ -902,7 +935,10 @@ function Application({
                 <p className="loading">{t("A carregar…", "Loading…")}</p>
               }
             >
-              <Admin onSettings={async () => setStatus(await api("/status"))} />
+              <Admin
+                initialFeedbackId={initialFeedbackId.current}
+                onSettings={async () => setStatus(await api("/status"))}
+              />
             </Suspense>
           )}
           <footer>
@@ -933,7 +969,29 @@ function Application({
           {t("A enviar ficheiros…", "Uploading files…")} {uploading}%
         </div>
       )}
+      {feedbackToast && (
+        <div className="toast" role="status">
+          {ft("submitted")}
+        </div>
+      )}
       <div ref={dialogRef}>
+        {feedback && (
+          <Suspense fallback={null}>
+            <FeedbackForm
+              language={lang}
+              route={page}
+              related={
+                nav.find((item) => item.id === page)?.label ||
+                (page === "admin" ? t("Administração", "Administration") : "")
+              }
+              onClose={() => setFeedback(false)}
+              onSubmitted={() => {
+                setFeedback(false);
+                setFeedbackToast(true);
+              }}
+            />
+          </Suspense>
+        )}
         {matte && (
           <Suspense fallback={null}>
             <MatteEditor
