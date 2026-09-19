@@ -43,6 +43,14 @@ test("feedback works end to end in Portuguese and English", async ({ page }) => 
   await page
     .getByRole("button", { name: "Administração", exact: true })
     .click();
+  const adminFeedbackButton = page.getByRole("button", {
+    name: "Reportar erro ou sugerir",
+    exact: true,
+  });
+  await expect(adminFeedbackButton).toBeVisible();
+  await adminFeedbackButton.click();
+  await expect(page.getByRole("dialog", { name: "Enviar comentário" })).toBeVisible();
+  await page.getByRole("button", { name: "Fechar", exact: true }).click();
   await page.getByRole("button", { name: "Comentários", exact: true }).click();
   const rowPt = page.locator(".feedback-table tbody tr").filter({ hasText: titlePt });
   await expect(rowPt).toContainText("Novo");
@@ -63,7 +71,10 @@ test("feedback works end to end in Portuguese and English", async ({ page }) => 
 
   await page.getByLabel("Idioma").selectOption("en");
   await page.locator(".account").click();
-  await page.getByRole("button", { name: "Report a bug or suggest" }).click();
+  await page
+    .locator(".account-menu")
+    .getByRole("button", { name: "Report a bug or suggest" })
+    .click();
   const titleEn = `Export suggestion ${Date.now()}`;
   const formEn = page.getByRole("dialog", { name: "Send feedback" });
   await formEn.getByLabel("Type").selectOption("FEATURE");

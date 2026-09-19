@@ -501,6 +501,15 @@ main {
 .page-heading {
   margin-bottom: 27px;
 }
+.admin-page-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+.admin-page-heading > div {
+  min-width: 0;
+}
 .page-heading p {
   font-size: 13px;
   color: var(--muted);
@@ -2123,6 +2132,14 @@ table .link {
   }
   .page-heading {
     margin-bottom: 24px;
+  }
+  .admin-page-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .admin-page-heading > .secondary {
+    width: 100%;
   }
   .dropzone {
     min-height: 245px;

@@ -938,6 +938,7 @@ function Application({
               <Admin
                 initialFeedbackId={initialFeedbackId.current}
                 onSettings={async () => setStatus(await api("/status"))}
+                onFeedback={() => setFeedback(true)}
               />
             </Suspense>
           )}

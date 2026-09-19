@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import MailSettings from "./MailSettings";
 import FeedbackAdmin from "./FeedbackAdmin";
-import { RefreshCw, ShieldCheck } from "lucide-react";
+import { MessageSquareText, RefreshCw, ShieldCheck } from "lucide-react";
 import { api, fileSize } from "./api";
 import { useError, useFeedbackText, useText } from "./i18n";
 
 export default function Admin({
   onSettings,
+  onFeedback,
   initialFeedbackId = "",
 }: {
   onSettings: () => void;
+  onFeedback: () => void;
   initialFeedbackId?: string;
 }) {
   const t = useText(),
@@ -80,17 +82,23 @@ export default function Admin({
   };
   return (
     <>
-      <div className="page-heading">
-        <div className="eyebrow">
-          {t("A TUA INSTALAÇÃO", "YOUR INSTALLATION")}
+      <div className="page-heading admin-page-heading">
+        <div>
+          <div className="eyebrow">
+            {t("A TUA INSTALAÇÃO", "YOUR INSTALLATION")}
+          </div>
+          <h1>{t("Administração", "Administration")}</h1>
+          <p>
+            {t(
+              "Pessoas, limites e estado do serviço.",
+              "People, limits and service status.",
+            )}
+          </p>
         </div>
-        <h1>{t("Administração", "Administration")}</h1>
-        <p>
-          {t(
-            "Pessoas, limites e estado do serviço.",
-            "People, limits and service status.",
-          )}
-        </p>
+        <button className="secondary compact" type="button" onClick={onFeedback}>
+          <MessageSquareText size={16} />
+          {ft("menu")}
+        </button>
       </div>
       <div className="section-heading">
         <div className="filter-tabs">
