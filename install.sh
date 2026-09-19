@@ -189,10 +189,21 @@ else
   echo "A obter Everyday Tools de $EVERYDAY_TOOLS_REPOSITORY"
   git clone --depth 1 --branch "$EVERYDAY_TOOLS_BRANCH" -- "$EVERYDAY_TOOLS_REPOSITORY" "$install_dir"
 fi
+# The installer runs as root with a private umask. Keep configuration private,
+# while allowing the administrator to enter the installation directory and run
+# maintenance commands through sudo.
+chmod 0755 "$install_dir"
 cd "$install_dir"
 if [[ ! -f .env ]]; then cp .env.example .env; chmod 600 .env; fi
 
-docker compose up -d --build --wait --wait-timeout 300
+if ! docker compose up -d --build --wait --wait-timeout 300; then
+  echo >&2
+  echo 'A verificação de saúde dos containers falhou.' >&2
+  docker compose ps -a >&2 || true
+  docker compose logs --tail 100 worker web >&2 || true
+  echo "Depois de corrigir o erro, repete: sudo bash $install_dir/install.sh" >&2
+  exit 1
+fi
 
 port="$(sed -n 's/^PORT=//p' .env | head -n 1)"
 port="${port:-80}"

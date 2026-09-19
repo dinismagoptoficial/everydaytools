@@ -262,6 +262,13 @@ def test_host_stays_free_of_converter_dependencies():
             assert package not in line.lower(), f"{package} must stay inside the container image"
 
 
+def test_installation_directory_is_accessible_and_failures_show_logs():
+    body = INSTALLER.read_text(encoding="utf-8")
+    assert 'chmod 0755 "$install_dir"' in body
+    assert "docker compose ps -a >&2" in body
+    assert "docker compose logs --tail 100 worker web >&2" in body
+
+
 def extract_mdns_helper():
     """The publisher script install.sh writes to /usr/local/bin/everyday-tools-mdns."""
     body = INSTALLER.read_text(encoding="utf-8")
