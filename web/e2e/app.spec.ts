@@ -198,8 +198,15 @@ test("registration and login use separate personal file lists", async ({
     .click();
   await page.getByRole("button", { name: "Criar uma conta" }).click();
   const unique = `person-${Date.now()}@example.test`;
+  const accountPassword = "safe1234";
   await page.getByLabel("E-mail", { exact: true }).fill(unique);
-  await page.getByLabel(/^Palavra-passe/).fill(password);
+  const accountPasswordField = page.getByLabel(/^Palavra-passe/);
+  await accountPasswordField.fill(accountPassword);
+  await expect(accountPasswordField).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "Mostrar palavra-passe" }).click();
+  await expect(accountPasswordField).toHaveAttribute("type", "text");
+  await page.getByRole("button", { name: "Ocultar palavra-passe" }).click();
+  await expect(accountPasswordField).toHaveAttribute("type", "password");
   await page.getByRole("button", { name: "Criar conta", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "O que queres fazer?" }),
@@ -207,7 +214,7 @@ test("registration and login use separate personal file lists", async ({
   await page.locator(".account").click();
   await page.getByRole("button", { name: "Terminar sessão" }).click();
   await page.getByLabel("E-mail", { exact: true }).fill(unique);
-  await page.getByLabel(/^Palavra-passe/).fill(password);
+  await page.getByLabel(/^Palavra-passe/).fill(accountPassword);
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "O que queres fazer?" }),

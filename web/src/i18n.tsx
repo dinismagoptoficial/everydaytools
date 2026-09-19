@@ -336,8 +336,8 @@ const errors: Record<string, [string, string]> = {
     "The email or password is incorrect.",
   ],
   password_length: [
-    "Usa uma palavra-passe entre 10 e 128 caracteres.",
-    "Use a password between 10 and 128 characters.",
+    "Usa uma palavra-passe entre 8 e 128 caracteres.",
+    "Use a password between 8 and 128 characters.",
   ],
   account_exists: [
     "Já existe uma conta com este e-mail.",

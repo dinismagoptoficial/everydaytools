@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, ArrowLeft, ShieldCheck } from "lucide-react";
+import { ArrowRight, ArrowLeft, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { api, type Status } from "./api";
 import Legal, { LegalDialog } from "./Legal";
 import { useError, useText, type Language } from "./i18n";
@@ -29,6 +29,7 @@ export default function Auth({
   const [step, setStep] = useState(1),
     [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
+    [showPassword, setShowPassword] = useState(false),
     [website, setWebsite] = useState("");
   const [name, setName] = useState("Everyday Tools"),
     [registration, setRegistration] = useState(true);
@@ -59,7 +60,7 @@ export default function Auth({
     e.preventDefault();
     setError("");
     if (mode === "setup" && step === 1) {
-      if (password.length < 10) return setError("password_length");
+      if (password.length < 8) return setError("password_length");
       setStep(2);
       return;
     }
@@ -233,28 +234,54 @@ export default function Auth({
                 </label>
               )}
               {mode !== "recover" && (
-                <label>
-                  {t("Palavra-passe", "Password")}
-                  <input
-                    type="password"
-                    required
-                    minLength={mode === "login" ? 1 : 10}
-                    maxLength={128}
-                    autoComplete={
-                      mode === "login" ? "current-password" : "new-password"
-                    }
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
+                <div className="password-group">
+                  <label htmlFor="auth-password">
+                    {t("Palavra-passe", "Password")}
+                  </label>
+                  <div className="password-field">
+                    <input
+                      id="auth-password"
+                      type={
+                        showPassword &&
+                        (mode === "setup" || mode === "register")
+                          ? "text"
+                          : "password"
+                      }
+                      required
+                      minLength={mode === "login" ? 1 : 8}
+                      maxLength={128}
+                      autoComplete={
+                        mode === "login" ? "current-password" : "new-password"
+                      }
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    {(mode === "setup" || mode === "register") && (
+                      <button
+                        type="button"
+                        className="password-toggle"
+                        aria-label={
+                          showPassword
+                            ? t("Ocultar palavra-passe", "Hide password")
+                            : t("Mostrar palavra-passe", "Show password")
+                        }
+                        aria-pressed={showPassword}
+                        onClick={() => setShowPassword((visible) => !visible)}
+                      >
+                        {showPassword ? (
+                          <EyeOff size={18} />
+                        ) : (
+                          <Eye size={18} />
+                        )}
+                      </button>
+                    )}
+                  </div>
                   {mode !== "login" && (
                     <small>
-                      {t(
-                        "Pelo menos 10 caracteres.",
-                        "At least 10 characters.",
-                      )}
+                      {t("Pelo menos 8 caracteres.", "At least 8 characters.")}
                     </small>
                   )}
-                </label>
+                </div>
               )}
             </>
           )}

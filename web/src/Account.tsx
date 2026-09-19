@@ -177,7 +177,7 @@ export default function Account({
                     type="password"
                     autoComplete="new-password"
                     required
-                    minLength={10}
+                    minLength={8}
                     maxLength={128}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -189,7 +189,7 @@ export default function Account({
                     type="password"
                     autoComplete="new-password"
                     required
-                    minLength={10}
+                    minLength={8}
                     maxLength={128}
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}

@@ -14,6 +14,14 @@ from app.processors import archive_jobs
 from conftest import authenticate, upload
 
 
+def test_password_length_accepts_eight_characters():
+    encoded = security.password_hash("safe1234")
+    assert security.verify(encoded, "safe1234")
+    with pytest.raises(HTTPException) as error:
+        security.password_hash("short12")
+    assert error.value.detail == "password_length"
+
+
 def test_setup_and_session_fixation(client):
     user = authenticate(client)
     assert user["role"] == "ADMIN"

@@ -22,7 +22,7 @@ def digest(value):
 
 
 def password_hash(value):
-    if not 10 <= len(value) <= 128:
+    if not 8 <= len(value) <= 128:
         raise HTTPException(400, "password_length")
     if not password_slots.acquire(timeout=3):
         raise HTTPException(503, "server_busy", headers={"Retry-After": "2"})
