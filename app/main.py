@@ -1,9 +1,11 @@
 import asyncio
 import json
 import logging
+import re
 import secrets
 import shutil
 import time
+import unicodedata
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 from typing import Literal
@@ -176,14 +178,22 @@ class FeedbackState(BaseModel):
 
 
 def feedback_text(value, minimum, maximum, multiline=False):
-    value = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    value = unicodedata.normalize("NFKC", value.replace("\r\n", "\n").replace("\r", "\n")).strip()
     if not minimum <= len(value) <= maximum:
         raise HTTPException(400, "feedback_invalid")
-    if any(ord(character) < 32 and character not in ("\n", "\t") for character in value):
+    if any(
+        (ord(character) < 32 or unicodedata.category(character).startswith("C"))
+        and character not in ("\n", "\t")
+        for character in value
+    ):
         raise HTTPException(400, "feedback_invalid")
     if not multiline and ("\n" in value or "\t" in value):
         raise HTTPException(400, "feedback_invalid")
     return value
+
+
+def feedback_signature(*values):
+    return tuple(" ".join(value.casefold().split()) for value in values)
 
 
 def feedback_result(row, details=True):
@@ -627,21 +637,29 @@ def matte_asset(job_id: str, index: int, asset: Literal["mask", "source"], user=
 
 
 @app.post("/api/feedback", status_code=201)
-def create_feedback(body: FeedbackCreate, user=Depends(security.session)):
-    security.rate_limit("feedback:" + user["id"], 6, 3600)
+def create_feedback(body: FeedbackCreate, request: Request, user=Depends(security.session)):
+    security.rate_limit("feedback-hour:" + user["id"], 6, 3600)
+    security.rate_limit("feedback-day:" + user["id"], 20, 86400)
+    security.rate_limit("feedback-ip:" + security.ip(request), 60, 3600)
     title = feedback_text(body.title, 3, 140)
     description = feedback_text(body.description, 10, 5000, True)
     related = feedback_text(body.related, 0, 120) if body.related.strip() else ""
     route = feedback_text(body.route, 0, 160) if body.route.strip() else ""
+    if len(re.findall(r"(?:https?://|www\.)", description, re.IGNORECASE)) > 8:
+        raise HTTPException(400, "feedback_invalid")
     now = time.time()
     report_id = secrets.token_hex(16)
     with connect(True) as db:
-        duplicate = db.execute(
-            """SELECT id FROM feedback WHERE user_id=? AND type=? AND title=? AND description=?
-               AND related=? AND route=? AND created>? LIMIT 1""",
-            (user["id"], body.type, title, description, related, route, now - 600),
-        ).fetchone()
-        if duplicate:
+        recent = db.execute(
+            """SELECT type,title,description FROM feedback
+               WHERE user_id=? AND created>? ORDER BY created DESC LIMIT 20""",
+            (user["id"], now - 600),
+        ).fetchall()
+        signature = feedback_signature(body.type, title, description)
+        if any(
+            feedback_signature(row["type"], row["title"], row["description"]) == signature
+            for row in recent
+        ):
             raise HTTPException(409, "feedback_duplicate")
         db.execute(
             """INSERT INTO feedback

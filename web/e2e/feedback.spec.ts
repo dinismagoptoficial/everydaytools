@@ -61,12 +61,12 @@ test("feedback works end to end in Portuguese and English", async ({ page }) => 
   await expect(detailPt).toContainText("Em tratamento");
   await detailPt.getByRole("button", { name: "Marcar como concluído" }).click();
   await expect(detailPt).toContainText("Concluído");
-  await detailPt.getByRole("button", { name: "Eliminar", exact: true }).click();
-  const confirmPt = page.getByRole("dialog", { name: "Eliminar comentário?" });
+  await detailPt.getByRole("button", { name: "Eliminar pedido", exact: true }).click();
+  const confirmPt = page.getByRole("dialog", { name: "Eliminar pedido?" });
   await expect(
-    confirmPt.getByRole("heading", { name: "Eliminar comentário?" }),
+    confirmPt.getByRole("heading", { name: "Eliminar pedido?" }),
   ).toBeVisible();
-  await confirmPt.getByRole("button", { name: "Eliminar agora" }).click();
+  await confirmPt.getByRole("button", { name: "Eliminar pedido" }).click();
   await expect(page.getByText(titlePt, { exact: true })).toHaveCount(0);
 
   await page.getByLabel("Idioma").selectOption("en");
@@ -108,10 +108,10 @@ test("feedback works end to end in Portuguese and English", async ({ page }) => 
   ).toEqual([]);
   await detailEn.getByRole("button", { name: "Mark as completed" }).click();
   await expect(detailEn).toContainText("Completed");
-  await detailEn.getByRole("button", { name: "Delete", exact: true }).click();
+  await detailEn.getByRole("button", { name: "Delete report", exact: true }).click();
   await page
-    .getByRole("dialog", { name: "Delete feedback?" })
-    .getByRole("button", { name: "Delete now" })
+    .getByRole("dialog", { name: "Delete report?" })
+    .getByRole("button", { name: "Delete report" })
     .click();
   await expect(page.getByText(titleEn, { exact: true })).toHaveCount(0);
 });

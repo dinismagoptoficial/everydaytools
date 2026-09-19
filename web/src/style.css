@@ -1667,6 +1667,13 @@ table .link {
 .feedback-detail-actions .danger {
   margin-left: auto;
 }
+.feedback-delete-button {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+}
+.feedback-delete-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, #fff);
+}
 @media (max-width: 760px) {
   .feedback-filters,
   .feedback-meta {

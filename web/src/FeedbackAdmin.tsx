@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Trash2, X } from "lucide-react";
 import {
   api,
   type Feedback,
@@ -350,6 +350,7 @@ export default function FeedbackAdmin({ initialId = "" }: { initialId?: string }
                     {ft("goBack")}
                   </button>
                   <button className="primary" disabled={busy} onClick={() => void remove()}>
+                    <Trash2 size={15} />
                     {ft("confirmDelete")}
                   </button>
                 </div>
@@ -433,7 +434,12 @@ export default function FeedbackAdmin({ initialId = "" }: { initialId?: string }
                       {ft("setCompleted")}
                     </button>
                   )}
-                  <button className="link danger" disabled={busy} onClick={() => setConfirmDelete(true)}>
+                  <button
+                    className="secondary compact danger feedback-delete-button"
+                    disabled={busy}
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 size={15} />
                     {ft("delete")}
                   </button>
                 </div>

@@ -3,7 +3,7 @@ from email.message import EmailMessage
 import pytest
 from fastapi.testclient import TestClient
 
-from app import mail
+from app import mail, security
 from app.db import connect
 from app.legal import VERSION
 from app.main import app
@@ -120,7 +120,7 @@ def test_complete_feedback_flow_in_both_languages(
 def test_feedback_validation_duplicate_limits_and_mail_failure(client, monkeypatch):
     setup_account(client, "admin@example.test", "pt-PT", admin=True)
     with TestClient(app, headers={"X-Requested-With": "EverydayTools"}) as person:
-        setup_account(person, "person@example.test", "en")
+        account = setup_account(person, "person@example.test", "en")
         invalid = person.post(
             "/api/feedback",
             json={"type": "BUG", "title": "No", "description": "Too short", "language": "en"},
@@ -139,9 +139,55 @@ def test_feedback_validation_duplicate_limits_and_mail_failure(client, monkeypat
         }
         created = person.post("/api/feedback", json=payload)
         assert created.status_code == 201, created.text
-        duplicate = person.post("/api/feedback", json=payload)
+        duplicate_payload = {
+            **payload,
+            "title": "  KEYBOARD WORKFLOW  ",
+            "description": "Add a quicker  keyboard workflow for repeated tasks.",
+            "route": "home",
+        }
+        duplicate = person.post("/api/feedback", json=duplicate_payload)
         assert duplicate.status_code == 409
         assert duplicate.json()["detail"] == "feedback_duplicate"
+
+        too_many_links = person.post(
+            "/api/feedback",
+            json={
+                "type": "OTHER",
+                "title": "Suspicious link burst",
+                "description": " ".join(f"https://example.test/{index}" for index in range(9)),
+                "language": "en",
+            },
+        )
+        assert too_many_links.status_code == 400
+        assert too_many_links.json()["detail"] == "feedback_invalid"
+
+        hidden_control = person.post(
+            "/api/feedback",
+            json={
+                "type": "OTHER",
+                "title": "Hidden\u202econtrol",
+                "description": "This text contains a hidden direction control character.",
+                "language": "en",
+            },
+        )
+        assert hidden_control.status_code == 400
+        assert hidden_control.json()["detail"] == "feedback_invalid"
+
+        with connect(True) as db:
+            db.execute(
+                "UPDATE rate_limits SET count=20 WHERE key=?",
+                (security.digest("feedback-day:" + account["id"]),),
+            )
+        daily_limit = person.post(
+            "/api/feedback",
+            json={
+                "type": "OTHER",
+                "title": "Daily limit check",
+                "description": "This valid report must be stopped by the daily limit.",
+                "language": "en",
+            },
+        )
+        assert daily_limit.status_code == 429
 
         updated = client.put(
             f"/api/admin/feedback/{created.json()['id']}", json={"status": "IN_PROGRESS"}

@@ -277,13 +277,13 @@ export const feedbackCopy = {
   setNew: ["Voltar a Novo", "Return to New"],
   setProgress: ["Marcar em tratamento", "Mark as in progress"],
   setCompleted: ["Marcar como concluído", "Mark as completed"],
-  delete: ["Eliminar", "Delete"],
-  deleteTitle: ["Eliminar comentário?", "Delete feedback?"],
+  delete: ["Eliminar pedido", "Delete report"],
+  deleteTitle: ["Eliminar pedido?", "Delete report?"],
   deleteText: [
-    "Este comentário será eliminado de forma permanente.",
-    "This feedback will be permanently deleted.",
+    "Este pedido será eliminado de forma permanente.",
+    "This report will be permanently deleted.",
   ],
-  confirmDelete: ["Eliminar agora", "Delete now"],
+  confirmDelete: ["Eliminar pedido", "Delete report"],
   goBack: ["Voltar", "Go back"],
   close: ["Fechar", "Close"],
   empty: [
