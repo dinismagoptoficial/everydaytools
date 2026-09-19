@@ -265,8 +265,16 @@ def test_host_stays_free_of_converter_dependencies():
 def test_installation_directory_is_accessible_and_failures_show_logs():
     body = INSTALLER.read_text(encoding="utf-8")
     assert 'chmod 0755 "$install_dir"' in body
+    assert 'chmod -R a+rX "$install_dir/$project_dir"' in body
+    assert "! -name '.env'" in body
+    assert "chmod 600 .env" in body
     assert "docker compose ps -a >&2" in body
     assert "docker compose logs --tail 100 worker web >&2" in body
+
+
+def test_runtime_image_makes_application_code_readable():
+    body = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "chmod -R a+rX /app/app /app/scripts /app/web" in body
 
 
 def extract_mdns_helper():

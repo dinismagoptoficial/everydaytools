@@ -24,7 +24,9 @@ COPY scripts/ /app/scripts/
 COPY LICENSE THIRD_PARTY_NOTICES.md /app/
 COPY --from=frontend /build/web/dist /app/web/dist
 RUN groupadd -g 10001 everyday && useradd -u 10001 -g everyday -M everyday \
-    && mkdir -p /data && chown everyday:everyday /data
+    && mkdir -p /data && chown everyday:everyday /data \
+    && chmod -R a+rX /app/app /app/scripts /app/web \
+    && chmod a+r /app/LICENSE /app/THIRD_PARTY_NOTICES.md
 USER 10001:10001
 EXPOSE 8000
 ENTRYPOINT ["/usr/bin/tini", "-g", "--"]

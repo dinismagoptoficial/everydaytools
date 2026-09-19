@@ -193,8 +193,20 @@ fi
 # while allowing the administrator to enter the installation directory and run
 # maintenance commands through sudo.
 chmod 0755 "$install_dir"
+for project_dir in app docs scripts tests web; do
+  if [[ -d "$install_dir/$project_dir" ]]; then
+    chmod -R a+rX "$install_dir/$project_dir"
+  fi
+done
+find "$install_dir" -maxdepth 1 -type f ! -name '.env' -exec chmod a+r {} +
+for command_file in install.sh update.sh backup.sh; do
+  if [[ -f "$install_dir/$command_file" ]]; then
+    chmod 0755 "$install_dir/$command_file"
+  fi
+done
 cd "$install_dir"
 if [[ ! -f .env ]]; then cp .env.example .env; chmod 600 .env; fi
+chmod 600 .env
 
 if ! docker compose up -d --build --wait --wait-timeout 300; then
   echo >&2
